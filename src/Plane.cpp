@@ -114,6 +114,14 @@ Plane::Plane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch, Plane
 	updateBoundary();
 }
 
+float Plane::height() {
+	if (this->orientation != PlaneOrientation::Vertical) {
+		throw runtime_error("non-vertical plane doesnt have height");
+	}
+
+	return _leftUp.z - _leftDown.z;
+}
+
 void Plane::setType(PlaneType type) {
 	this->_type = type;
 }
@@ -331,6 +339,10 @@ void Plane::generateLinePointCloud(PointT pt1, PointT pt2, int pointPitch, int c
 }
 
 void Plane::updateBoundary() {
+	/*if (this->pointCloud->size() <= 0) {
+		throw runtime_error("@UpdateBoundary size of pointCloud size == 0");
+	}*/
+
 	PointT min, max;
 	pcl::getMinMax3D(*this->pointCloud, min, max);
 	PointT leftUp, leftDown, rightUp, rightDown;
@@ -354,4 +366,8 @@ void Plane::updateBoundary() {
 	this->_leftDown = leftDown;
 	this->_rightUp = rightUp;
 	this->_rightDown = rightDown;
+	/*if (this->_leftUp.x > 10000) {
+		PCL_ERROR("@UpdateBoundary impossible case");
+		cout << "size of point cloud" << this->pointCloud->size() << endl;
+	}*/
 }

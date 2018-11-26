@@ -78,8 +78,12 @@ public:
 	const PointT& rightDown()        const { return _rightDown; }
 	const PointT& rightUp()          const { return _rightUp; }
 	const PointT& leftUp()           const { return _leftUp; }
+	
 	const Eigen::Vector4d& abcd()    const { return _abcd; }
 	const PlaneType& type()          const { return _type; }
+
+	float height();
+
 	Plane *coveredPlane = nullptr;
 	PlaneOrientation orientation = PlaneOrientation::UNDEFINED;
 	void setType(PlaneType type);

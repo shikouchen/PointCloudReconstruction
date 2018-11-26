@@ -39,13 +39,13 @@ struct reconstructParas
 	float leafSize = 0.05; // unit is meter -> 5cm
 
 	// Clustering
-	int MinSizeOfCluster = 50;
+	int MinSizeOfCluster = 10;
 	int NumberOfNeighbours = 30;
 	int SmoothnessThreshold = 2; // angle 360 degree
 	int CurvatureThreshold = 5;
 	// RANSAC
 	double RANSAC_DistThreshold = 0.25; //0.25; 
-	float RANSAC_MinInliers = 0.5; // 500 todo: should be changed to percents
+	float RANSAC_MinInliers = 0.1; // 500 todo: should be changed to percents
 	float RANSAC_PlaneVectorThreshold = 0.2;
 
 	// Fill the plane
@@ -64,9 +64,8 @@ PlaneColor innerPlaneColor = Color_Blue;
 PlaneColor upDownPlaneColor = Color_Green;
 
 int main(int argc, char** argv) {
-
 	PCL_WARN("This program is based on assumption that ceiling and ground on the X-Y  \n");
-	pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS); // for not show the warning
+	pcl::console::setVerbosityLevel(pcl::console::L_INFO); // for not show the warning
 	PointCloudT::Ptr allCloudFilled(new PointCloudT);
 	vector<Plane> filledPlanes;
 	vector<Plane> horizontalPlanes;
@@ -87,7 +86,7 @@ int main(int argc, char** argv) {
 	re.applyRANSACtoClusters(paras.RANSAC_DistThreshold, paras.RANSAC_PlaneVectorThreshold, paras.RANSAC_MinInliers);
 	PointCloudT::Ptr all(new PointCloudT);
 	vector<Plane>& planes = re.ransacPlanes;
-	simpleView("Raw RANSAC planes", planes);
+	//simpleView("Raw RANSAC planes", planes);
 	PointCloudT::Ptr tmp(new PointCloudT);
 	for (auto &plane : planes) {
 		for (auto &p : plane.pointCloud->points) {
@@ -110,8 +109,8 @@ int main(int argc, char** argv) {
 			tmp->push_back(p);
 		}
 	}
-	pcl::io::savePLYFile("OutputData/Filled_RANSAC.ply", *tmp);
-	simpleView("Filled RANSAC planes", planes);
+	//pcl::io::savePLYFile("OutputData/Filled_RANSAC.ply", *tmp);
+	//simpleView("Filled RANSAC planes", planes);
 	
 	// choose the two that have larger points
 	for (size_t j = 0; j < horizontalPlanes.size() < 2 ? horizontalPlanes.size() : 2; j++) {
@@ -129,6 +128,88 @@ int main(int argc, char** argv) {
 	cout << "num of horizontal planes: " << horizontalPlanes.size() << endl;
 	cout << "num of upDownPlanes planes: " << upDownPlanes.size() << endl;
 
+	simpleView("filled", filledPlanes);
+
+	tmp->resize(0);
+	for (Plane &plane: filledPlanes){
+		for (auto &p : plane.pointCloud->points){
+			tmp->push_back(p);
+		}
+	}
+	PointT min, max;
+	pcl::getMinMax3D(*tmp, min, max);
+	PointCloudT::Ptr newPts(new PointCloudT);
+	float minDistEdges = 1;
+	cout << "Z:  min " << min.z << " -- " << max.z << endl;
+	for (float i = min.z ; i < max.z; i+=0.06)
+	{
+		vector<Plane> tmpPlanes;
+
+		for (auto plane : filledPlanes) {
+			if (plane.height() < 0.5) continue;
+			Plane a(plane.pointCloud, plane.abcd());
+			a.applyFilter("z", i, i + 0.1);
+			if (a.pointCloud->size() < 10) continue;
+			tmpPlanes.push_back(a);
+		}
+		for (int i = 0; i < tmpPlanes.size(); ++i) {
+            PointT left_s  = tmpPlanes[i].leftDown();
+            PointT right_s  = tmpPlanes[i].rightDown();
+            vector<float> left_leftDist, left_rightDist, right_leftDist, right_rightDist;
+            for (int j = 0; j < tmpPlanes.size(); ++j) {
+                PointT left_t  = tmpPlanes[j].leftDown();
+                PointT right_t = tmpPlanes[j].rightDown();
+                if (i == j) {
+                    left_leftDist.push_back(INT_MAX);
+                    left_rightDist.push_back(INT_MAX);
+                    right_leftDist.push_back(INT_MAX);
+                    right_rightDist.push_back(INT_MAX);
+                    continue;
+                }
+                left_leftDist.push_back(pcl::geometry::distance(left_s,left_t));
+                left_rightDist.push_back(pcl::geometry::distance(left_s,right_t));
+                right_leftDist.push_back(pcl::geometry::distance(right_s,left_t));
+                right_rightDist.push_back(pcl::geometry::distance(right_s,right_t));
+            }
+            if ( *min_element(left_leftDist.begin(),left_leftDist.end()) > *min_element(left_rightDist.begin(),left_rightDist.end()) ){
+                int index = min_element(left_rightDist.begin(),left_rightDist.end()) - left_rightDist.begin();
+				if (*min_element(left_rightDist.begin(), left_rightDist.end()) < minDistEdges) {
+					generateLinePointCloud(left_s, tmpPlanes[index].rightDown(), 30, 255 << 16, newPts);
+				}
+                
+            }else{
+                int index = min_element(left_leftDist.begin(),left_leftDist.end()) - left_leftDist.begin();
+                
+				if (*min_element(left_leftDist.begin(), left_leftDist.end()) < minDistEdges) {
+					generateLinePointCloud(left_s, tmpPlanes[index].leftDown(), 30, 255 << 16, newPts);
+				}
+            }
+
+            if ( *min_element(right_leftDist.begin(),right_leftDist.end()) > *min_element(right_rightDist.begin(),right_rightDist.end()) ){
+                int index = min_element(right_rightDist.begin(),right_rightDist.end()) - right_rightDist.begin();
+				if (*min_element(right_rightDist.begin(), right_rightDist.end()) < minDistEdges) {
+					generateLinePointCloud(right_s, tmpPlanes[index].rightDown(), 30, 255 << 16, newPts);
+				}
+
+            }else{
+                int index = min_element(right_leftDist.begin(),right_leftDist.end()) - right_leftDist.begin();
+				if (*min_element(right_leftDist.begin(), right_leftDist.end()) < minDistEdges) {
+					generateLinePointCloud(right_s, tmpPlanes[index].leftDown(), 30, 255 << 16, newPts);
+				}
+            }
+        }
+	}
+
+	for (Plane &plane : filledPlanes) {
+		for (auto &p : plane.pointCloud->points) {
+			newPts->push_back(p);
+		}
+	}
+	PCL_INFO("Total Points %i\n", newPts->size());
+	simpleView("all connect", newPts);
+	pcl::io::savePLYFile("OutputData/AllConnect.ply", *newPts);
+	return 0;
+	/*
 	Eigen::Vector2f ZLimits(-upDownPlanes[0].abcd()[3], -upDownPlanes[1].abcd()[3]);
 	if (upDownPlanes[0].abcd()[3] < upDownPlanes[1].abcd()[3]) {
 		ZLimits[0] = -upDownPlanes[1].abcd()[3];
@@ -137,10 +218,10 @@ int main(int argc, char** argv) {
 
 
 	// mark: filter the height based on z values of upDown Planes
-	cout << "\nHeight Filter: point lower than " << ZLimits[0] << " and higher than " << ZLimits[1] << endl;
-	for (auto &filledPlane : filledPlanes) {
-		filledPlane.applyFilter("z", ZLimits[0], ZLimits[1]);
-	}
+	//cout << "\nHeight Filter: point lower than " << ZLimits[0] << " and higher than " << ZLimits[1] << endl;
+	//for (auto &filledPlane : filledPlanes) {
+	//	filledPlane.applyFilter("z", ZLimits[0], ZLimits[1]);
+	//}
 
 
 	// Mark: we control the distance between two edges and the height difference between two edges
@@ -333,7 +414,7 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
-
+	*/
 
 	pcl::io::savePLYFile("OutputData/6_AllPlanes.ply", *allCloudFilled);
 	simpleView("cloud Filled", allCloudFilled);
