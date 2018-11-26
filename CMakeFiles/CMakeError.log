@@ -1,0 +1,38 @@
+Determining if the include file pthread.h exists failed with the following output:
+Change Dir: D:/CHEN/extract_walls_chen/CMakeFiles/CMakeTmp
+
+Run Build Command:"C:/Program Files (x86)/Microsoft Visual Studio/2017/Professional/MSBuild/15.0/Bin/MSBuild.exe" "cmTC_3a79f.vcxproj" "/p:Configuration=Debug" "/p:Platform=x64" "/p:VisualStudioVersion=15.0"
+.NET Framework 向け Microsoft (R) Build Engine バージョン 15.8.169+g1ccb72aefa
+Copyright (C) Microsoft Corporation.All rights reserved.
+
+2018/10/24 14:35:08 にビルドを開始しました。
+ノード 1 上のプロジェクト "D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\cmTC_3a79f.vcxproj" (既定のターゲット)。
+PrepareForBuild:
+  ディレクトリ "cmTC_3a79f.dir\Debug\" を作成しています。
+  ディレクトリ "D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\Debug\" を作成しています。
+  ディレクトリ "cmTC_3a79f.dir\Debug\cmTC_3a79f.tlog\" を作成しています。
+InitializeBuildStatus:
+  "AlwaysCreate" が指定されたため "cmTC_3a79f.dir\Debug\cmTC_3a79f.tlog\unsuccessfulbuild" を作成しています。
+ClCompile:
+  C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.15.26726\bin\HostX86\x64\CL.exe /c /Zi /W3 /WX- /diagnostics:classic /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_3a79f.dir\Debug\\" /Fd"cmTC_3a79f.dir\Debug\vc141.pdb" /Gd /TC /errorReport:queue D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\CheckIncludeFile.c
+  Microsoft(R) C/C++ Optimizing Compiler Version 19.15.26730 for x64
+  Copyright (C) Microsoft Corporation.  All rights reserved.
+  
+  CheckIncludeFile.c
+  cl /c /Zi /W3 /WX- /diagnostics:classic /Od /Ob0 /D WIN32 /D _WINDOWS /D "CMAKE_INTDIR=\"Debug\"" /D _MBCS /Gm- /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"cmTC_3a79f.dir\Debug\\" /Fd"cmTC_3a79f.dir\Debug\vc141.pdb" /Gd /TC /errorReport:queue D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\CheckIncludeFile.c
+  
+D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\CheckIncludeFile.c(1): fatal error C1083: include ファイルを開けません。'pthread.h':No such file or directory [D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\cmTC_3a79f.vcxproj]
+プロジェクト "D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\cmTC_3a79f.vcxproj" (既定のターゲット) のビルドが終了しました -- 失敗。
+
+ビルドに失敗しました。
+
+"D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\cmTC_3a79f.vcxproj" (既定のターゲット) (1) ->
+(ClCompile ターゲット) -> 
+  D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\CheckIncludeFile.c(1): fatal error C1083: include ファイルを開けません。'pthread.h':No such file or directory [D:\CHEN\extract_walls_chen\CMakeFiles\CMakeTmp\cmTC_3a79f.vcxproj]
+
+    0 個の警告
+    1 エラー
+
+経過時間 00:00:01.14
+
+
