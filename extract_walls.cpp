@@ -32,6 +32,43 @@ typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
+float getDistance(Plane& a, Plane& b) {
+	float k = (a.leftUp().y  - a.rightUp().y) / (a.leftUp().x - a.rightUp().x);
+	float b0 = a.leftUp().y  - k * a.leftUp().x;
+	float b1 = b.leftUp().y  - k * b.leftUp().x;
+	float b2 = b.rightUp().y - k * b.rightUp().x;
+
+	float dist1 = abs(b0 - b1) / sqrt(k*k + 1);
+	float dist2 = abs(b0 - b2) / sqrt(k*k + 1);
+	// for test, since dist1 and dist2 should be so different
+	if (abs(dist1 - dist2) > 1) PCL_WARN("dist1 and dist2 should be so different");
+	return (dist1 + dist2) / 2;
+}
+
+bool isOverlap(Plane& a, Plane& b) {
+	float k0 = (a.leftUp().y - a.rightUp().y) / (a.leftUp().x - a.rightUp().x);
+	float b0 = a.leftUp().y - k0 * a.leftUp().x;
+
+	float k1 = -1 / k0;
+	float b1 = b.leftUp().y  - k1 * b.leftUp().x;
+	float b2 = b.rightUp().y - k1 * b.rightUp().x;
+
+	Eigen::Matrix2f A;
+	A << k0, -1, k1, -1;
+	Eigen::Vector2f B0,B1;
+	B0 << -b0, -b1;
+	B1 << -b0, -b2;
+	Eigen::Vector2f p1,p2;
+	p1 = A.colPivHouseholderQr().solve(B0);
+	p2 = A.colPivHouseholderQr().solve(B1);
+	float largeX = a.leftUp().x > a.rightUp().x ? a.leftUp().x : a.rightUp().x;
+	float smallX = a.leftUp().x < a.rightUp().x ? a.leftUp().x : a.rightUp().x;
+	float largeY = a.leftUp().y > a.rightUp().y ? a.leftUp().y : a.rightUp().y;
+	float smallY = a.leftUp().y < a.rightUp().y ? a.leftUp().y : a.rightUp().y;
+	return (p1[0] >= smallX && p1[0] <= largeX) || (p1[1] >= smallY && p1[1] <= largeY);
+	
+}
+
 struct reconstructParas
 {
 	// Downsampling
@@ -87,7 +124,7 @@ int main(int argc, char** argv) {
 	re.applyRANSACtoClusters(paras.RANSAC_DistThreshold, paras.RANSAC_PlaneVectorThreshold, paras.RANSAC_MinInliers);
 	PointCloudT::Ptr all(new PointCloudT);
 	vector<Plane>& planes = re.ransacPlanes;
-	simpleView("Raw RANSAC planes", planes);
+	//simpleView("Raw RANSAC planes", planes);
 	PointCloudT::Ptr tmp(new PointCloudT);
 	for (auto &plane : planes) {
 		for (auto &p : plane.pointCloud->points) {
@@ -112,7 +149,7 @@ int main(int argc, char** argv) {
 	}
 	pcl::io::savePLYFile("OutputData/Filled_RANSAC.ply", *tmp);
 	simpleView("Filled RANSAC planes", planes);
-	
+
 	// choose the two that have larger points
 	for (size_t j = 0; j < horizontalPlanes.size() < 2 ? horizontalPlanes.size() : 2; j++) {
 		size_t maxNum = 0;
@@ -129,26 +166,122 @@ int main(int argc, char** argv) {
 	cout << "num of horizontal planes: " << horizontalPlanes.size() << endl;
 	cout << "num of upDownPlanes planes: " << upDownPlanes.size() << endl;
 
+	// compute room height
 	Eigen::Vector2f ZLimits(-upDownPlanes[0].abcd()[3], -upDownPlanes[1].abcd()[3]);
 	if (upDownPlanes[0].abcd()[3] < upDownPlanes[1].abcd()[3]) {
 		ZLimits[0] = -upDownPlanes[1].abcd()[3];
 		ZLimits[1] = -upDownPlanes[0].abcd()[3];
 	}
 
-
-	// mark: filter the height based on z values of upDown Planes
-	cout << "\nHeight Filter: point lower than " << ZLimits[0] << " and higher than " << ZLimits[1] << endl;
-	for (auto &filledPlane : filledPlanes) {
-		filledPlane.applyFilter("z", ZLimits[0], ZLimits[1]);
+	for (size_t i = 0; i < filledPlanes.size(); i++)
+	{
+		if ((filledPlanes[i].leftUp().z - filledPlanes[i].leftDown().z) / (ZLimits[1] - ZLimits[0]) <= 0.2) {
+			filledPlanes.erase(filledPlanes.begin() + i--);
+		}
 	}
+	
+	float minAngle = 10;
+	float minDist = 0.4;
+	int G_index = -1;
+	for (Plane&plane_s : filledPlanes) {
+		if (plane_s.group_index != -1) continue;
+		G_index++;
+		plane_s.group_index = G_index;
+		stack<Plane*> tmp;
+		tmp.push(&plane_s);
+		while (!tmp.empty())
+		{
+			Plane* p_s = tmp.top();
+			tmp.pop();
+			for (Plane& p : filledPlanes) {
+				Plane* p_t = &p;
+				if (p_t->group_index != -1) continue;
+
+				// first : normal anglle
+				double angle = acos(p_s->getNormal().dot(p_t->getNormal()) / (p_s->getNormal().norm()*p_t->getNormal().norm())) * 180 / M_PI;
+				//double angle_a = pcl::getAngle3D(p_s->getNormal(), p_t.getNormal(), true);
+				//p_t->setColor(PlaneColor::Color_Blue);
+				
+				/*cout << "angle: " << angle << " ";
+				cout << "dist: " << getDistance(*p_s, *p_t) << " ";
+				cout << "is overlap: " << isOverlap(*p_s, *p_t) << endl;*/
+				//simpleView("Filled RANSAC planes : Group Planes", planes);
+				//p_t->setColor(PlaneColor::Color_White);
+				if (angle > minAngle) continue;
+				// second : distance between 2 planes
+				if (getDistance(*p_s, *p_t) > minDist) continue;
+				if (!(isOverlap(*p_s, *p_t)) && !(isOverlap(*p_t, *p_s))) continue;
+				p_t->group_index = G_index;
+				tmp.push(p_t);
+			}
+		}
+	}
+	
+	vector<int32_t> colors;
+	for (size_t i = 0; i < G_index+1; i++)
+	{
+		int32_t r = rand() % 255;
+		int32_t g = rand() % 255;
+		int32_t b = rand() % 255;
+		int32_t a = 255;
+		a = a << 24;
+		r = r << 16;
+		g = g << 8;
+		colors.push_back(a | r | g | b);
+	}
+
+	for (size_t i = 0; i < filledPlanes.size(); i++)
+	{
+		if(filledPlanes[i].group_index != -1) filledPlanes[i].setColor(colors[filledPlanes[i].group_index]);
+	}
+
+	
+	vector<Plane> planeGroup;
+	for (size_t i = 0; i < G_index; i++)
+	{
+		PointCloudT::Ptr tmp(new PointCloudT);
+		for (auto &plane : filledPlanes) {
+			if (plane.group_index != i) continue;
+			for (auto &p : plane.pointCloud->points) tmp->push_back(p);
+		}
+		Plane plane(tmp);
+		planeGroup.push_back(plane);
+	}
+
+	simpleView("Filled RANSAC planes : Group Planes", planeGroup);
+
+	cout << "\nHeight Filter: point lower than " << ZLimits[0] << " and higher than " << ZLimits[1] << endl;
+	for (Plane&plane:planeGroup)
+	{
+		plane.runRANSAC(paras.RANSAC_DistThreshold, 0.8);
+		plane.filledPlane(paras.pointPitch);
+		plane.applyFilter("z", ZLimits[0], ZLimits[1]);
+	}
+	simpleView("Filled RANSAC planes : Filled Group Planes", planeGroup);
+	// mark: filter the height based on z values of upDown Planes
+	
+	// mark: extend main wall planes to z limits
+	for (Plane& filledPlane : planeGroup) {
+		Plane* plane = &filledPlane;
+		PointT leftUp, rightUp, leftDown, rightDown;
+		leftUp = plane->leftUp();    leftUp.z = ZLimits[1];
+		rightUp = plane->rightUp();   rightUp.z = ZLimits[1];
+		leftDown = plane->leftDown();  leftDown.z = ZLimits[0];
+		rightDown = plane->rightDown(); rightDown.z = ZLimits[0];
+		// fixme: this part has some problems
+		plane->extendPlane(leftUp, rightUp, plane->leftUp(), plane->rightUp(), paras.pointPitch);
+		plane->extendPlane(leftDown, rightDown, plane->leftDown(), plane->rightDown(), paras.pointPitch);
+	}
+
+	simpleView("Filled RANSAC planes:Extended height", planeGroup);
 
 
 	// Mark: we control the distance between two edges and the height difference between two edges
 
-	for (int i = 0; i < filledPlanes.size(); ++i) {
-		Plane* plane_s = &filledPlanes[i];
-		for (int j = i + 1; j < filledPlanes.size(); ++j) {
-			Plane* plane_t = &filledPlanes[j];
+	for (int i = 0; i < planeGroup.size(); ++i) {
+		Plane* plane_s = &planeGroup[i];
+		for (int j = i + 1; j < planeGroup.size(); ++j) {
+			Plane* plane_t = &planeGroup[j];
 			// mark: combine right -> left
 			if (pcl::geometry::distance(plane_s->rightDown(), plane_t->leftDown()) < paras.minimumEdgeDist
 				&& pcl::geometry::distance(plane_s->rightUp(), plane_t->leftUp()) < paras.minimumEdgeDist) {
@@ -188,18 +321,7 @@ int main(int argc, char** argv) {
 		}
 	}
 
-	// mark: extend main wall planes to z limits
-	for (auto &filledPlane : filledPlanes) {
-		Plane* plane = &filledPlane;
-		if (plane->type() != PlaneType_MainWall) continue;
-		PointT leftUp, rightUp, leftDown, rightDown;
-		leftUp = plane->leftUp();    leftUp.z = ZLimits[1];
-		rightUp = plane->rightUp();   rightUp.z = ZLimits[1];
-		leftDown = plane->leftDown();  leftDown.z = ZLimits[0];
-		rightDown = plane->rightDown(); rightDown.z = ZLimits[0];
-		plane->extendPlane(leftUp, rightUp, plane->leftUp(), plane->rightUp(), paras.pointPitch);
-		plane->extendPlane(leftDown, rightDown, plane->leftDown(), plane->rightDown(), paras.pointPitch);
-	}
+	simpleView("connect the planes", planeGroup);
 
 	// mark: found outer planes for inner planes
 	for (size_t i = 0; i < filledPlanes.size(); i++) {

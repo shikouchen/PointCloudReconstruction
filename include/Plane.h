@@ -70,9 +70,13 @@ private:
 
 public:
 	Plane();
+	Plane(PointCloudT::Ptr rawPointCloud);
 	Plane(PointCloudT::Ptr rawPointCloud, Eigen::Vector4d abcd);
 	Plane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch, PlaneColor color);
 
+	//test
+	int group_index = -1;
+	//test
 	PointCloudT::Ptr pointCloud;
 	const PointT& leftDown()         const { return _leftDown; }
 	const PointT& rightDown()        const { return _rightDown; }
@@ -84,6 +88,7 @@ public:
 	PlaneOrientation orientation = PlaneOrientation::UNDEFINED;
 	void setType(PlaneType type);
 	void setColor(PlaneColor colorType);
+	void setColor(int32_t color);
 	// This is for fill the vertical plane based on their boundary.
 	// pros: will fill all the plane, which means ignore same vacant parts of original pts.
 	// cons: the high will change to the projection length to y-z plane
@@ -96,6 +101,8 @@ public:
 	Eigen::Vector3d getNormal();
 	void removePointWithin(float xMin, float xMax, float yMin, float yMax, float zMin, float zMax);
 
+	//ransac
+	void runRANSAC(double distanceFromRANSACPlane, double ratio);
 };
 
 #endif

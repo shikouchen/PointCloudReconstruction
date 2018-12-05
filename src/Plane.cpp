@@ -96,6 +96,13 @@ Plane::Plane()
 	this->pointCloud = tmp;
 }
 
+Plane::Plane(PointCloudT::Ptr rawPointCloud)
+{
+	PointCloudT::Ptr tmp(new PointCloudT);
+	this->pointCloud = tmp;
+	pcl::copyPointCloud(*rawPointCloud, *this->pointCloud);
+}
+
 /** @brief initialize plane based on raw point and plane vector
  */
 Plane::Plane(PointCloudT::Ptr rawPointCloud, Eigen::Vector4d abcd)
@@ -121,6 +128,14 @@ void Plane::setType(PlaneType type) {
 void Plane::setColor(PlaneColor colorType)
 {
 	int32_t color = colorType2int(colorType);
+	PointCloudT* p = pointCloud.get();
+	for (size_t i = 0; i < pointCloud.get()->size(); i++) {
+		p->at(i).rgba = color;
+	}
+}
+
+void Plane::setColor(int32_t color)
+{
 	PointCloudT* p = pointCloud.get();
 	for (size_t i = 0; i < pointCloud.get()->size(); i++) {
 		p->at(i).rgba = color;
@@ -275,6 +290,29 @@ void Plane::removePointWithin(float xMin, float xMax, float yMin, float yMax, fl
 	condrem.filter(*this->pointCloud);
 }
 
+
+void Plane::runRANSAC(double distanceFromRANSACPlane, double ratio) {
+	int erateTimes = 0;
+	pcl::ModelCoefficients::Ptr sacCoefficients(new pcl::ModelCoefficients);
+	pcl::PointIndices::Ptr sacInliers(new pcl::PointIndices);
+	while (true) {
+		erateTimes++;
+		if (erateTimes == 20) PCL_WARN("too many times in loop, change the value/n");
+		pcl::SACSegmentation<PointT> seg;
+		seg.setOptimizeCoefficients(true);
+		seg.setModelType(pcl::SACMODEL_PLANE);
+		seg.setMethodType(pcl::SAC_RANSAC);
+		seg.setDistanceThreshold(distanceFromRANSACPlane);
+		seg.setInputCloud(this->pointCloud);
+		seg.segment(*sacInliers, *sacCoefficients);
+		if (sacInliers->indices.size() / this->pointCloud->size() >= ratio) break;
+		distanceFromRANSACPlane += 0.1;
+		sacInliers->indices.clear();
+		sacCoefficients->values.clear();
+	}
+	Eigen::Vector4d abcd(sacCoefficients->values[0], sacCoefficients->values[1], sacCoefficients->values[2], sacCoefficients->values[3]);
+	this->_abcd = abcd;
+}
 /**\paragraph Private Methods
  */
 
