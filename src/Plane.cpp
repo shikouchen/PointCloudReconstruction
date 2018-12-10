@@ -155,8 +155,8 @@ void Plane::filledPlane(int pointPitch) {
 	pcl::getMinMax3D(*this->pointCloud, proj_min, proj_max);
 	PointCloudT::Ptr cloud_filled_temp(new PointCloudT);
 	int32_t color = colorType2int(Color_White);
-	for (int i = 0; i < pointPitch * (proj_max.y - proj_min.y); i++) {
-		for (int j = 0; j < pointPitch * (proj_max.z - proj_min.z); j++) {
+	for (int i = 0; i <= pointPitch * (proj_max.y - proj_min.y); i++) {
+		for (int j = 0; j <= pointPitch * (proj_max.z - proj_min.z); j++) {
 			PointT pointForFill;
 			if (planePara[0] / planePara[1] > 0 && planePara[0] < 0)
 				pointForFill.x += planePara[3]; //
@@ -176,21 +176,77 @@ void Plane::filledPlane(int pointPitch) {
 	rotation(0, 0) = cos(-angle); rotation(0, 1) = -sin(-angle);
 	rotation(1, 0) = sin(-angle); rotation(1, 1) = cos(-angle);
 	pcl::transformPointCloud(*cloud_filled_temp, *this->pointCloud, rotation);
-	PointT leftDown, rightDown, rightUp, leftUp;
-	pcl::getMinMax3D(*cloud_filled_temp, leftDown, rightUp); //元に戻す前のy-z平面に平行な面を用いる
-	rightDown.x = rightUp.x;
-	rightDown.y = rightUp.y;
-	rightDown.z = leftDown.z;
-	leftUp = leftDown;
-	leftUp.z = rightUp.z;
-	TransformPoint(&leftDown, (-1) * angle);
-	TransformPoint(&rightDown, (-1) * angle);
-	TransformPoint(&leftUp, (-1) * angle);
-	TransformPoint(&rightUp, (-1) * angle);
-	this->_leftDown = leftDown;
-	this->_leftUp = leftUp;
-	this->_rightDown = rightDown;
-	this->_rightUp = rightUp;
+	updateBoundary();
+	//PointT leftDown, rightDown, rightUp, leftUp;
+	//pcl::getMinMax3D(*cloud_filled_temp, leftDown, rightUp); //元に戻す前のy-z平面に平行な面を用いる
+	//rightDown.x = rightUp.x;
+	//rightDown.y = rightUp.y;
+	//rightDown.z = leftDown.z;
+	//leftUp = leftDown;
+	//leftUp.z = rightUp.z;
+	//TransformPoint(&leftDown, (-1) * angle);
+	//TransformPoint(&rightDown, (-1) * angle);
+	//TransformPoint(&leftUp, (-1) * angle);
+	//TransformPoint(&rightUp, (-1) * angle);
+	//this->_leftDown = leftDown;
+	//this->_leftUp = leftUp;
+	//this->_rightDown = rightDown;
+	//this->_rightUp = rightUp;
+}
+
+void Plane::filledPlane(int pointPitch, float heightUp, float heightDown) {
+
+		Eigen::Vector4d planePara = this->_abcd;
+		double angle = acos(abs(planePara[0]) / sqrt(planePara[0] * planePara[0] + planePara[1] * planePara[1] + planePara[2] * planePara[2])); //注意！！この方程式は、2平面のなす角度は、0〜90度
+		if (planePara[0] / planePara[1] > 0) angle = (-1) * angle;
+		Eigen::Matrix4f rotation = Eigen::Matrix4f::Identity();
+		rotation(0, 0) = cos(angle); rotation(0, 1) = -sin(angle);
+		rotation(1, 0) = sin(angle); rotation(1, 1) = cos(angle);
+		pcl::transformPointCloud(*this->pointCloud, *this->pointCloud, rotation);
+		PointT proj_min;
+		PointT proj_max;
+		pcl::getMinMax3D(*this->pointCloud, proj_min, proj_max);
+		proj_max.z = heightUp;
+		proj_min.z = heightDown;
+		PointCloudT::Ptr cloud_filled_temp(new PointCloudT);
+		int32_t color = colorType2int(Color_White);
+		for (int i = 0; i <= pointPitch * (proj_max.y - proj_min.y); i++) {
+			for (int j = 0; j <= pointPitch * (proj_max.z - proj_min.z); j++) {
+				PointT pointForFill;
+				if (planePara[0] / planePara[1] > 0 && planePara[0] < 0)
+					pointForFill.x += planePara[3]; //
+				else if (planePara[0] / planePara[1] < 0 && planePara[0] < 0)
+					pointForFill.x += planePara[3];
+				else if (planePara[0] / planePara[1] > 0 && planePara[0] > 0)
+					pointForFill.x -= planePara[3];
+				else if (planePara[0] / planePara[1] < 0 && planePara[0] > 0)
+					pointForFill.x -= planePara[3];
+				pointForFill.y = proj_min.y + ((double)i / pointPitch);
+				pointForFill.z = proj_min.z + ((double)j / pointPitch);
+				pointForFill.rgba = color;
+				cloud_filled_temp->points.push_back(pointForFill);
+			}
+		}
+
+		rotation(0, 0) = cos(-angle); rotation(0, 1) = -sin(-angle);
+		rotation(1, 0) = sin(-angle); rotation(1, 1) = cos(-angle);
+		pcl::transformPointCloud(*cloud_filled_temp, *this->pointCloud, rotation);
+		updateBoundary();
+		//PointT leftDown, rightDown, rightUp, leftUp;
+		//pcl::getMinMax3D(*cloud_filled_temp, leftDown, rightUp); //元に戻す前のy-z平面に平行な面を用いる
+		//rightDown.x = rightUp.x;
+		//rightDown.y = rightUp.y;
+		//rightDown.z = leftDown.z;
+		//leftUp = leftDown;
+		//leftUp.z = rightUp.z;
+		//TransformPoint(&leftDown, (-1) * angle);
+		//TransformPoint(&rightDown, (-1) * angle);
+		//TransformPoint(&leftUp, (-1) * angle);
+		//TransformPoint(&rightUp, (-1) * angle);
+		//this->_leftDown = leftDown;
+		//this->_leftUp = leftUp;
+		//this->_rightDown = rightDown;
+		//this->_rightUp = rightUp;
 }
 
 
@@ -358,7 +414,7 @@ void Plane::generateLinePointCloud(PointT pt1, PointT pt2, int pointPitch, int c
 	float ratioX = (pt1.x - pt2.x) / numPoints;
 	float ratioY = (pt1.y - pt2.y) / numPoints;
 	float ratioZ = (pt1.z - pt2.z) / numPoints;
-	for (size_t i = 0; i < numPoints; i++) {
+	for (size_t i = 0; i <= numPoints; i++) {
 		PointT p;
 		p.x = pt2.x + i * (ratioX);
 		p.y = pt2.y + i * (ratioY);

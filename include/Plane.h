@@ -93,6 +93,7 @@ public:
 	// pros: will fill all the plane, which means ignore same vacant parts of original pts.
 	// cons: the high will change to the projection length to y-z plane
 	void filledPlane(int pointPitch);
+	void filledPlane(int pointPitch, float heightUp, float heightDown);
 	void applyFilter(const string axis, float min, float max);
 	void extendPlane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch, PlaneColor colorType);
 	void extendPlane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch);

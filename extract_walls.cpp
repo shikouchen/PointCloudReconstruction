@@ -237,14 +237,17 @@ int main(int argc, char** argv) {
 
 	
 	vector<Plane> planeGroup;
-	for (size_t i = 0; i < G_index; i++)
+	vector<int> numOfGroups(G_index+1, 0);
+	for (size_t i = 0; i <= G_index; i++)
 	{
 		PointCloudT::Ptr tmp(new PointCloudT);
 		for (auto &plane : filledPlanes) {
 			if (plane.group_index != i) continue;
+			numOfGroups[i]+=1;
 			for (auto &p : plane.pointCloud->points) tmp->push_back(p);
 		}
 		Plane plane(tmp);
+		plane.group_index = i;
 		planeGroup.push_back(plane);
 	}
 
@@ -254,76 +257,87 @@ int main(int argc, char** argv) {
 	for (Plane&plane:planeGroup)
 	{
 		plane.runRANSAC(paras.RANSAC_DistThreshold, 0.8);
-		plane.filledPlane(paras.pointPitch);
-		plane.applyFilter("z", ZLimits[0], ZLimits[1]);
+		plane.filledPlane(paras.pointPitch, ZLimits[1], ZLimits[0]);
 	}
 	simpleView("Filled RANSAC planes : Filled Group Planes", planeGroup);
-	// mark: filter the height based on z values of upDown Planes
-	
-	// mark: extend main wall planes to z limits
-	for (Plane& filledPlane : planeGroup) {
-		Plane* plane = &filledPlane;
-		PointT leftUp, rightUp, leftDown, rightDown;
-		leftUp = plane->leftUp();    leftUp.z = ZLimits[1];
-		rightUp = plane->rightUp();   rightUp.z = ZLimits[1];
-		leftDown = plane->leftDown();  leftDown.z = ZLimits[0];
-		rightDown = plane->rightDown(); rightDown.z = ZLimits[0];
-		// fixme: this part has some problems
-		plane->extendPlane(leftUp, rightUp, plane->leftUp(), plane->rightUp(), paras.pointPitch);
-		plane->extendPlane(leftDown, rightDown, plane->leftDown(), plane->rightDown(), paras.pointPitch);
-	}
 
-	simpleView("Filled RANSAC planes:Extended height", planeGroup);
-
-
-	// Mark: we control the distance between two edges and the height difference between two edges
-
+	vector<vector<int>> record(planeGroup.size(), vector<int>(2,-1));
 	for (int i = 0; i < planeGroup.size(); ++i) {
 		Plane* plane_s = &planeGroup[i];
-		for (int j = i + 1; j < planeGroup.size(); ++j) {
+		vector<float> tmpLeftEdgesDist(planeGroup.size()*2,INT32_MAX);
+		vector<float> tmpRightEdgesDist(planeGroup.size()*2, INT32_MAX);
+		for (int j = 0; j < planeGroup.size(); ++j) {
+			if (i == j) continue;
+				
 			Plane* plane_t = &planeGroup[j];
-			// mark: combine right -> left
-			if (pcl::geometry::distance(plane_s->rightDown(), plane_t->leftDown()) < paras.minimumEdgeDist
-				&& pcl::geometry::distance(plane_s->rightUp(), plane_t->leftUp()) < paras.minimumEdgeDist) {
-				// mark: if the difference of edge too large, skip
-				if (plane_s->getEdgeLength(EdgeRight) - plane_t->getEdgeLength(EdgeLeft) > paras.minHeightDiff) continue;
-				Plane filled(plane_s->rightDown(), plane_s->rightUp(), plane_t->leftDown(), plane_t->leftUp(), paras.pointPitch, Color_Red);
-				wallEdgePlanes.push_back(filled);
-				plane_s->setType(PlaneType_MainWall); plane_t->setType(PlaneType::PlaneType_MainWall);
-				// mark: combine left -> right
-			}
-			else if (pcl::geometry::distance(plane_s->leftDown(), plane_t->rightDown()) < paras.minimumEdgeDist
-				&& pcl::geometry::distance(plane_s->leftUp(), plane_t->rightUp()) < paras.minimumEdgeDist) {
-
-				if (plane_s->getEdgeLength(EdgeLeft) - plane_t->getEdgeLength(EdgeRight) > paras.minHeightDiff) continue;
-				plane_s->setType(PlaneType_MainWall); plane_t->setType(PlaneType_MainWall);
-				Plane filled(plane_s->leftDown(), plane_s->leftUp(), plane_t->rightDown(), plane_t->rightUp(), paras.pointPitch, Color_Red);
-				wallEdgePlanes.push_back(filled);
-				// mark: combine left -> left
-			}
-			else if (pcl::geometry::distance(plane_s->leftDown(), plane_t->leftDown()) < paras.minimumEdgeDist
-				&& pcl::geometry::distance(plane_s->leftUp(), plane_t->leftUp()) < paras.minimumEdgeDist) {
-
-				if (plane_s->getEdgeLength(EdgeLeft) - plane_t->getEdgeLength(EdgeLeft) > paras.minHeightDiff) continue;
-				plane_s->setType(PlaneType_MainWall); plane_t->setType(PlaneType_MainWall);
-				Plane filled(plane_s->leftDown(), plane_s->leftUp(), plane_t->leftDown(), plane_t->leftUp(), paras.pointPitch, Color_Red);
-				wallEdgePlanes.push_back(filled);
-				// mark: combine right -> right
-			}
-			else if (pcl::geometry::distance(plane_s->rightDown(), plane_t->rightDown()) < paras.minimumEdgeDist
-				&& pcl::geometry::distance(plane_s->rightUp(), plane_t->rightUp()) < paras.minimumEdgeDist) {
-
-				if (plane_s->getEdgeLength(EdgeLeft) - plane_t->getEdgeLength(EdgeLeft) > paras.minHeightDiff) continue;
-				plane_s->setType(PlaneType_MainWall); plane_t->setType(PlaneType_MainWall);
-				Plane filled(plane_s->rightDown(), plane_s->rightUp(), plane_t->rightDown(), plane_t->rightUp(), paras.pointPitch, Color_Red);
-				wallEdgePlanes.push_back(filled);
-			}
+			float ll = (pcl::geometry::distance(plane_s->leftDown(), plane_t->leftDown()));
+			float lr = (pcl::geometry::distance(plane_s->leftDown(), plane_t->rightDown()));
+			float rl = (pcl::geometry::distance(plane_s->rightDown(), plane_t->leftDown()));
+			float rr = (pcl::geometry::distance(plane_s->rightDown(), plane_t->rightDown()));
+			tmpLeftEdgesDist[2*j] = ll ;
+			tmpLeftEdgesDist[2*j+1] = lr ;
+			tmpRightEdgesDist[2*j] = rl;
+			tmpRightEdgesDist[2*j+1] = rr;
 		}
+		auto minLeft = min_element(tmpLeftEdgesDist.begin(), tmpLeftEdgesDist.end());
+		int minIndex_left = distance(tmpLeftEdgesDist.begin(), minLeft);
+		record[i][0] = *minLeft > paras.minimumEdgeDist ? -1 : (minIndex_left);
+
+		auto minRight = min_element(tmpRightEdgesDist.begin(), tmpRightEdgesDist.end());
+		int minIndex_right = distance(tmpRightEdgesDist.begin(),minRight);
+		record[i][1] = *minRight > paras.minimumEdgeDist ? -1 : (minIndex_right);
 	}
+	
+	for (int i = 0; i < planeGroup.size(); ++i) {
+		if (record[i][0] == -1) continue;
+		
+		//for faster if two edges connect each other
+		if (record[record[i][0] / 2][record[i][0] % 2] == 2*i) record[record[i][0] / 2][record[i][0] % 2] = -1;
+		
+		int leftTargetPlane = record[i][0] / 2;
+		if (record[i][0] % 2 == 0) {
+			Plane filled(planeGroup[i].leftDown(), planeGroup[i].leftUp(),
+				planeGroup[leftTargetPlane].leftDown(), planeGroup[leftTargetPlane].leftUp(), paras.pointPitch, Color_Red);
+			wallEdgePlanes.push_back(filled);
+		}
+		else if (record[i][0] % 2 == 1) {
+			Plane filled(planeGroup[i].leftDown(), planeGroup[i].leftUp(),
+				planeGroup[leftTargetPlane].rightDown(), planeGroup[leftTargetPlane].rightUp(), paras.pointPitch, Color_Red);
+			wallEdgePlanes.push_back(filled);
+		}
 
-	simpleView("connect the planes", planeGroup);
 
+		if (record[i][1] == -1) continue;
+		if (record[record[i][0] / 2][record[i][0] % 2] == 2 * i+1) record[record[i][0] / 2][record[i][0] % 2] = -1;
+		int rightTargetPlane = record[i][1] / 2;
+		if (record[i][1] % 2 == 0) {
+			Plane filled(planeGroup[i].rightDown(), planeGroup[i].rightUp(),
+				planeGroup[rightTargetPlane].leftDown(), planeGroup[rightTargetPlane].leftUp(), paras.pointPitch, Color_Red);
+			wallEdgePlanes.push_back(filled);
+		}
+		else if (record[i][1] % 2 == 1) {
+			Plane filled(planeGroup[i].rightDown(), planeGroup[i].rightUp(),
+				planeGroup[rightTargetPlane].rightDown(), planeGroup[rightTargetPlane].rightUp(), paras.pointPitch, Color_Red);
+			wallEdgePlanes.push_back(filled);
+		}
+		
+	}
+	
+	
+	vector<Plane> tmpAllPlane;
+	for (auto &plane:planeGroup)
+	{
+		tmpAllPlane.push_back(plane);
+	}
+	for (auto &plane : wallEdgePlanes)
+	{
+		tmpAllPlane.push_back(plane);
+	}
+	simpleView("connect the planes", tmpAllPlane);
+	
 	// mark: found outer planes for inner planes
+	/*
+	
 	for (size_t i = 0; i < filledPlanes.size(); i++) {
 		if (filledPlanes[i].type() != PlaneType_Other) continue;
 		Plane* source = &filledPlanes[i];
@@ -383,28 +397,27 @@ int main(int argc, char** argv) {
 			source->coveredPlane = passedPlanes[minDist_index];
 		}
 	}
-
+	*/
 	// mark: since we found the covered planes, we next extend these smaller planes to their covered planes.
-	for (auto &filledPlane : filledPlanes) {
-		Plane* plane = &filledPlane;
-		if (plane->coveredPlane == nullptr) continue;
-		plane->setColor(innerPlaneColor);
-		// mark: find the projection of plane to its covered plane -> pink
-		extendSmallPlaneToBigPlane(*plane, *plane->coveredPlane, 4294951115, paras.pointPitch, allCloudFilled);
-	}
-
-	// for final all visualization
-	for (auto &filledPlane : filledPlanes) {
-		for (size_t j = 0; j < filledPlane.pointCloud->points.size(); j++) {
-			allCloudFilled->points.push_back(filledPlane.pointCloud->points[j]);
+	vector<Plane> extenedPlanes;
+	int i = 0, j = 0;
+	for (auto &plane_s : planeGroup) {
+		if (numOfGroups[plane_s.group_index] == 1) continue;
+		Plane tmp;
+		for (auto &plane_t:filledPlanes)
+		{
+			if (plane_t.group_index != plane_s.group_index) continue;
+			extendSmallPlaneToBigPlane(plane_t, plane_s, 4294951115, paras.pointPitch, tmp.pointCloud);
+			
 		}
+		extenedPlanes.push_back(tmp);
 	}
-
-	for (auto &wallEdgePlane : wallEdgePlanes) {
-		for (size_t j = 0; j < wallEdgePlane.pointCloud->points.size(); j++) {
-			allCloudFilled->points.push_back(wallEdgePlane.pointCloud->points[j]);
-		}
+	for (auto &plane : filledPlanes)
+	{
+		plane.setColor(PlaneColor::Color_Blue);
+		tmpAllPlane.push_back(plane);
 	}
+	simpleView("connect the planes", tmpAllPlane);
 
 	// fill the ceiling and ground
 	{
@@ -469,7 +482,7 @@ void generateLinePointCloud(PointT pt1, PointT pt2, int pointPitch, int color, P
 	float ratioX = (pt1.x - pt2.x) / numPoints;
 	float ratioY = (pt1.y - pt2.y) / numPoints;
 	float ratioZ = (pt1.z - pt2.z) / numPoints;
-	for (size_t i = 0; i < numPoints; i++) {
+	for (size_t i = 0; i <numPoints; i++) {
 		PointT p;
 		p.x = pt2.x + i * (ratioX);
 		p.y = pt2.y + i * (ratioY);
@@ -504,6 +517,13 @@ void extendSmallPlaneToBigPlane(Plane& sourceP, Plane& targetP, int color, int p
 	q1.x = X1[0]; q1.y = X1[1]; q1.z = sourceP.leftDown().z;
 	p2.x = X2[0]; p2.y = X2[1]; p2.z = sourceP.leftUp().z;
 	q2.x = X2[0]; q2.y = X2[1]; q2.z = sourceP.leftDown().z;
+
+	//cout << "p1 " << p1.x << " " << p1.y << " " << p1.z << endl;
+	//cout << "p2 " << p2.x << " " << p2.y << " " << p2.z << endl;
+	//cout << "q1 " << q1.x << " " << q1.y << " " << q1.z << endl;
+	//cout << "q2 " << q2.x << " " << q2.y << " " << q2.z << endl;
+	//cout << "leftUp " << sourceP.leftUp().x << " " << sourceP.leftUp().y << " " << sourceP.leftUp().z << endl;
+	//cout << "rightUp " << sourceP.rightUp().x << " " << sourceP.rightUp().y << " " << sourceP.rightUp().z << endl;
 
 	Plane all;
 	Plane tmp_a(p1, q1, sourceP.leftUp(), sourceP.leftDown(), pointPitch, Color_Peach);
