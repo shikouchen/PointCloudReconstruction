@@ -3,25 +3,25 @@
 //
 #include <iostream>
 #include <vector>
+#include <cmath>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
+#include <pcl/io/obj_io.h> 
 #include <pcl/search/search.h>
 #include <pcl/search/kdtree.h>
 #include <pcl/features/normal_3d.h>
 #include <pcl/segmentation/region_growing.h>
+#include <pcl/segmentation/sac_segmentation.h> 
 #include <pcl/filters/extract_indices.h>
-#include <pcl/segmentation/sac_segmentation.h> //RANSACのため
-#include <cmath>
-#include <pcl/filters/project_inliers.h> //平面に投影するため
+#include <pcl/filters/project_inliers.h> 
 #include <pcl/filters/passthrough.h>
+#include <pcl/filters/conditional_removal.h>
+#include <pcl/filters/voxel_grid.h> 
 #include <pcl/common/pca.h>
 #include <pcl/common/common.h>
-#include <pcl/io/obj_io.h> //obj形式で保存するため
-#include <pcl/filters/voxel_grid.h> //ダウンサンプリングのため
-#include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/common/geometry.h>
-#include <pcl/filters/conditional_removal.h>
+#include <pcl/visualization/pcl_visualizer.h>
 #include "extract_walls.h"
 #include "Model.h"
 #include "Plane.h"
@@ -32,6 +32,15 @@ typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
+/**
+ * Gets a distance between two planes.
+ *
+ * @param [in,out] a A Plane to process.
+ * @param [in,out] b A Plane to process.
+ *
+ * @return The distance.
+ * @remark defind as line to line distance
+ */
 float getDistance(Plane& a, Plane& b) {
 	float k = (a.leftUp().y  - a.rightUp().y) / (a.leftUp().x - a.rightUp().x);
 	float b0 = a.leftUp().y  - k * a.leftUp().x;
@@ -40,11 +49,19 @@ float getDistance(Plane& a, Plane& b) {
 
 	float dist1 = abs(b0 - b1) / sqrt(k*k + 1);
 	float dist2 = abs(b0 - b2) / sqrt(k*k + 1);
-	// for test, since dist1 and dist2 should be so different
+	// since this defination might not be good, we calculate two time. dist1 and dist2 should be so different
 	if (abs(dist1 - dist2) > 1) PCL_WARN("dist1 and dist2 should be so different");
 	return (dist1 + dist2) / 2;
 }
 
+/**
+ * Query if 'a' is overlap with 'b'.
+ *
+ * @param [in,out] a A Plane to process.
+ * @param [in,out] b A Plane to process.
+ *
+ * @return True if overlap, false if not.
+ */
 bool isOverlap(Plane& a, Plane& b) {
 	float k0 = (a.leftUp().y - a.rightUp().y) / (a.leftUp().x - a.rightUp().x);
 	float b0 = a.leftUp().y - k0 * a.leftUp().x;
@@ -69,12 +86,99 @@ bool isOverlap(Plane& a, Plane& b) {
 	
 }
 
+/**
+ * Searches for the near planes.
+ *
+ * @param [in,out] source   Source for the.
+ * @param [in,out] planes   The planes.
+ * @param 		   distance The distance.
+ *
+ * @return Null if it fails, else the found near plane.
+ */
+vector<Plane*> findNearPlanes(int source, vector<Plane>& planes, float distance) {
+	vector<Plane*> res;
+	for (int i = 0; i < planes.size(); ++i ) {
+		if (source == i) continue;
+		PointT s_l, s_r, t_l,t_r;
+		s_l = planes[source].leftUp();
+		s_r = planes[source].rightUp();
+		s_l.z = 0; s_r.z = 0;
+		t_l = planes[i].leftUp();
+		t_r = planes[i].rightUp();
+		t_l.z = 0; t_r.z = 0;
+		if (pcl::geometry::distance(s_l, t_l) <= distance || pcl::geometry::distance(s_l, t_r) <= distance ||
+			pcl::geometry::distance(s_r, t_l) <= distance || pcl::geometry::distance(s_r, t_r) <= distance) {
+			res.push_back(&planes[i]);
+		}
+	}
+	return res;
+}
+
+/**
+ * Links two edges of two planes.
+ *
+ * @param [in,out] s_p The a plane.
+ * @param 		   s_e The linked edge of a plane.
+ * @param [in,out] t_p The b plane.
+ * @param 		   t_e The linked edge of b plane.
+ */
+ 
+ /*
+void linkEdge(Plane& s_p, edgeType s_e, Plane& t_p, edgeType t_e) {
+	if (s_e == edgeType::EdgeLeft) {
+		s_p.leftEdge.connectedPlane = &t_p;
+		s_p.leftEdge.connectedEdgeType = t_e;
+	}else if (s_e == edgeType::EdgeRight) {
+		s_p.rightEdge.connectedPlane = &t_p;
+		s_p.rightEdge.connectedEdgeType = t_e;
+	}
+	if (t_e == edgeType::EdgeLeft) {
+		t_p.leftEdge.connectedPlane = &s_p;
+		t_p.leftEdge.connectedEdgeType = s_e;
+	}
+	else if (t_e == edgeType::EdgeRight) {
+		t_p.rightEdge.connectedPlane = &s_p;
+		t_p.rightEdge.connectedEdgeType = s_e;
+	}
+}
+
+void connectTwoEdge(Plane& plane_a, edgeType edge_a, Plane& plane_b, edgeType edge_b, Plane& output) {
+	Plane tmp;
+	if (edge_a == EdgeLeft && edge_b == EdgeLeft) {
+		tmp.extendPlane(plane_a.leftDown(), plane_a.leftUp(),
+			plane_b.leftDown(), plane_b.leftUp(), paras.pointPitch, Color_Red);
+		plane_a.leftEdge.isConnected = true;
+		plane_b.leftEdge.isConnected = true;
+	}
+	else if (edge_a == EdgeLeft && edge_b == EdgeRight) {
+		tmp.extendPlane(plane_a.leftDown(), plane_a.leftUp(),
+			plane_b.rightDown(), plane_b.rightUp(), paras.pointPitch, Color_Red);
+		plane_a.leftEdge.isConnected = true;
+		plane_b.rightEdge.isConnected = true;
+	}
+	else if (edge_a == EdgeRight && edge_b == EdgeLeft) {
+		tmp.extendPlane(plane_a.rightDown(), plane_a.rightUp(),
+			plane_b.leftDown(), plane_b.leftUp(), paras.pointPitch, Color_Red);
+		plane_a.rightEdge.isConnected = true;
+		plane_b.leftEdge.isConnected = true;
+	}
+	else if (edge_a == EdgeRight && edge_b == EdgeRight) {
+		tmp.extendPlane(plane_a.rightDown(), plane_a.rightUp(),
+			plane_b.rightDown(), plane_b.rightUp(), paras.pointPitch, Color_Red);
+		plane_a.rightEdge.isConnected = true;
+		plane_b.rightEdge.isConnected = true;
+	}
+
+}
+*/
 struct reconstructParas
 {
 	// Downsampling
 	int KSearch = 10;
 	float leafSize = 0.05; // unit is meter -> 5cm
 
+	// Plane height threshold
+	float minPlaneHeight = 0.2;
 	// Clustering
 	int MinSizeOfCluster = 50;
 	int NumberOfNeighbours = 30;
@@ -89,9 +193,9 @@ struct reconstructParas
 	int pointPitch = 20; // number of point in 1 meter
 
 	// Combine planes
-	int minimumEdgeDist = 1; //we control the distance between two edges and the height difference between two edges
-	float minHeightDiff = 0.5;
-	int minAngle_normalDiff = 5;// when extend smaller plane to bigger plane, we will calculate the angle between normals of planes
+	float minimumEdgeDist = 1; //we control the distance between two edges and the height difference between two edges
+	float minPlanesDist = 0.4; // when clustering RANSAC planes, the min distance between two planes
+	float minAngle_normalDiff = 10.0;// when extend smaller plane to bigger plane, we will calculate the angle between normals of planes
 }paras;
 
 // color
@@ -100,8 +204,8 @@ PlaneColor outerPlaneColor = Color_Yellow;
 PlaneColor innerPlaneColor = Color_Blue;
 PlaneColor upDownPlaneColor = Color_Green;
 
-int main(int argc, char** argv) {
 
+int main(int argc, char** argv) {
 	PCL_WARN("This program is based on assumption that ceiling and ground on the X-Y  \n");
 	pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS); // for not show the warning
 	PointCloudT::Ptr allCloudFilled(new PointCloudT);
@@ -110,28 +214,34 @@ int main(int argc, char** argv) {
 	vector<Plane> upDownPlanes;
 	vector<Plane> wallEdgePlanes;
 	#ifdef _WIN32
-		//string fileName = argv[2];
-		string fileName = "TestData/Room_A.ply";
+		
+		int index;
+		
+		for (int i = 1; i < argc; ++i) {
+			cout << i << ": " << argv[i] << "\n";
+		}
+		cout << "Please enter an file index: ";
+		cin >> index;
+		cout << "\n";
+		while (index >= argc) { 
+			cerr << "worng number, pls select again" << endl; 
+			cout << "Please enter an file index: ";
+			cin >> index;
+			cout << "\n";
+		}
+		string fileName = argv[index];
 	#elif defined __unix__
 		string fileName = "/home/czh/Desktop/pointCloud PartTime/test/Room_E_Cloud_binary.ply";
 	#endif
+
+		cout << "\n***** start proceeing *****" << "\n";
 	Reconstruction re(fileName);
 	re.downSampling(paras.leafSize);
-	//re.outputFile("TestData/Room_F.ply");
-	//pcl::io::savePCDFile("TestData/Room_A.pcd", *re.pointCloud);
 	re.applyRegionGrow(paras.NumberOfNeighbours, paras.SmoothnessThreshold,
 		paras.CurvatureThreshold, paras.MinSizeOfCluster, paras.KSearch);
 	re.applyRANSACtoClusters(paras.RANSAC_DistThreshold, paras.RANSAC_PlaneVectorThreshold, paras.RANSAC_MinInliers);
 	PointCloudT::Ptr all(new PointCloudT);
 	vector<Plane>& planes = re.ransacPlanes;
-	//simpleView("Raw RANSAC planes", planes);
-	PointCloudT::Ptr tmp(new PointCloudT);
-	for (auto &plane : planes) {
-		for (auto &p : plane.pointCloud->points) {
-			tmp->push_back(p);
-		}
-	}
-	pcl::io::savePLYFile("OutputData/Raw_RANSAC.ply", *tmp);
 	for (auto &plane : planes) {
 		if (plane.orientation == Horizontal) {
 			horizontalPlanes.push_back(plane);
@@ -141,16 +251,9 @@ int main(int argc, char** argv) {
 			filledPlanes.push_back(plane);
 		}
 	}
-	tmp->resize(0);
-	for (auto &plane : planes) {
-		for (auto &p : plane.pointCloud->points) {
-			tmp->push_back(p);
-		}
-	}
-	pcl::io::savePLYFile("OutputData/Filled_RANSAC.ply", *tmp);
 	simpleView("Filled RANSAC planes", planes);
 
-	// choose the two that have larger points
+	// choose the two that have larger points as roof and ground
 	for (size_t j = 0; j < horizontalPlanes.size() < 2 ? horizontalPlanes.size() : 2; j++) {
 		size_t maxNum = 0;
 		size_t maxCloudIndex = 0;
@@ -172,16 +275,25 @@ int main(int argc, char** argv) {
 		ZLimits[0] = -upDownPlanes[1].abcd()[3];
 		ZLimits[1] = -upDownPlanes[0].abcd()[3];
 	}
+	cout << "\nHeight of room is " << ZLimits[1] - ZLimits[0] << endl;
 
+	// remove planes whose height are not meet condition
+	// remove planes whose has no near planes
 	for (size_t i = 0; i < filledPlanes.size(); i++)
 	{
-		if ((filledPlanes[i].leftUp().z - filledPlanes[i].leftDown().z) / (ZLimits[1] - ZLimits[0]) <= 0.2) {
+		if ((filledPlanes[i].leftUp().z - filledPlanes[i].leftDown().z) / (ZLimits[1] - ZLimits[0]) <= paras.minPlaneHeight) {
 			filledPlanes.erase(filledPlanes.begin() + i--);
 		}
 	}
+	for (size_t i = 0; i < filledPlanes.size(); i++)
+	{
+		int size = findNearPlanes(i, filledPlanes, paras.minimumEdgeDist).size();
+		if (size == 0) {
+			filledPlanes.erase(filledPlanes.begin() + i--);
+		}
+	}
+
 	
-	float minAngle = 10;
-	float minDist = 0.4;
 	int G_index = -1;
 	for (Plane&plane_s : filledPlanes) {
 		if (plane_s.group_index != -1) continue;
@@ -197,19 +309,14 @@ int main(int argc, char** argv) {
 				Plane* p_t = &p;
 				if (p_t->group_index != -1) continue;
 
-				// first : normal anglle
+				// angle of normal difference should lower than certain value
 				double angle = acos(p_s->getNormal().dot(p_t->getNormal()) / (p_s->getNormal().norm()*p_t->getNormal().norm())) * 180 / M_PI;
-				//double angle_a = pcl::getAngle3D(p_s->getNormal(), p_t.getNormal(), true);
-				//p_t->setColor(PlaneColor::Color_Blue);
-				
-				/*cout << "angle: " << angle << " ";
-				cout << "dist: " << getDistance(*p_s, *p_t) << " ";
-				cout << "is overlap: " << isOverlap(*p_s, *p_t) << endl;*/
-				//simpleView("Filled RANSAC planes : Group Planes", planes);
-				//p_t->setColor(PlaneColor::Color_White);
-				if (angle > minAngle) continue;
-				// second : distance between 2 planes
-				if (getDistance(*p_s, *p_t) > minDist) continue;
+				if (angle > paras.minAngle_normalDiff) continue;
+
+				// distance between two planes should smaller enough
+				if (getDistance(*p_s, *p_t) > paras.minPlanesDist) continue;
+
+				// two planes should not overlap with each other
 				if (!(isOverlap(*p_s, *p_t)) && !(isOverlap(*p_t, *p_s))) continue;
 				p_t->group_index = G_index;
 				tmp.push(p_t);
@@ -252,7 +359,7 @@ int main(int argc, char** argv) {
 	}
 
 	simpleView("Filled RANSAC planes : Group Planes", planeGroup);
-
+	
 	cout << "\nHeight Filter: point lower than " << ZLimits[0] << " and higher than " << ZLimits[1] << endl;
 	for (Plane&plane:planeGroup)
 	{
@@ -260,7 +367,8 @@ int main(int argc, char** argv) {
 		plane.filledPlane(paras.pointPitch, ZLimits[1], ZLimits[0]);
 	}
 	simpleView("Filled RANSAC planes : Filled Group Planes", planeGroup);
-
+	/*
+	// find nearest edges
 	vector<vector<int>> record(planeGroup.size(), vector<int>(2,-1));
 	for (int i = 0; i < planeGroup.size(); ++i) {
 		Plane* plane_s = &planeGroup[i];
@@ -270,8 +378,8 @@ int main(int argc, char** argv) {
 			if (i == j) continue;
 				
 			Plane* plane_t = &planeGroup[j];
-			float ll = (pcl::geometry::distance(plane_s->leftDown(), plane_t->leftDown()));
-			float lr = (pcl::geometry::distance(plane_s->leftDown(), plane_t->rightDown()));
+			float ll = (pcl::geometry::distance(plane_s->leftDown(),  plane_t->leftDown()));
+			float lr = (pcl::geometry::distance(plane_s->leftDown(),  plane_t->rightDown()));
 			float rl = (pcl::geometry::distance(plane_s->rightDown(), plane_t->leftDown()));
 			float rr = (pcl::geometry::distance(plane_s->rightDown(), plane_t->rightDown()));
 			tmpLeftEdgesDist[2*j] = ll ;
@@ -283,10 +391,37 @@ int main(int argc, char** argv) {
 		int minIndex_left = distance(tmpLeftEdgesDist.begin(), minLeft);
 		record[i][0] = *minLeft > paras.minimumEdgeDist ? -1 : (minIndex_left);
 
+		if (*minLeft <= paras.minimumEdgeDist) {
+			edgeType type = minIndex_left % 2 == 0 ? EdgeLeft : EdgeRight;
+			linkEdge(*plane_s, EdgeLeft, planeGroup[minIndex_left], type);
+		}
+		
+
 		auto minRight = min_element(tmpRightEdgesDist.begin(), tmpRightEdgesDist.end());
 		int minIndex_right = distance(tmpRightEdgesDist.begin(),minRight);
 		record[i][1] = *minRight > paras.minimumEdgeDist ? -1 : (minIndex_right);
+
+		if (*minRight <= paras.minimumEdgeDist) {
+			edgeType type = minIndex_right % 2 == 0 ? EdgeLeft : EdgeRight;
+			linkEdge(*plane_s, EdgeRight, planeGroup[minIndex_right], type);
+		}
 	}
+	
+
+	for (Plane &plane : planeGroup) {
+		if (plane.leftEdge.connectedPlane && !plane.leftEdge.isConnected) {
+			Plane tmp;
+			connectTwoEdge(plane, EdgeLeft, *plane.leftEdge.connectedPlane, plane.leftEdge.connectedEdgeType, tmp);
+			wallEdgePlanes.push_back(tmp);
+		}
+		
+		if (plane.rightEdge.connectedPlane && !plane.rightEdge.isConnected){
+			Plane tmp;
+			connectTwoEdge(plane, EdgeRight, *plane.rightEdge.connectedPlane, plane.rightEdge.connectedEdgeType, tmp);
+			wallEdgePlanes.push_back(tmp);
+		}
+	}
+
 	
 	for (int i = 0; i < planeGroup.size(); ++i) {
 		if (record[i][0] == -1) continue;
@@ -322,82 +457,21 @@ int main(int argc, char** argv) {
 		}
 		
 	}
-	
-	
-	vector<Plane> tmpAllPlane;
+	*/
+		
 	for (auto &plane:planeGroup)
 	{
-		tmpAllPlane.push_back(plane);
+		for (auto p : plane.pointCloud->points)
+			allCloudFilled->push_back(p);
 	}
 	for (auto &plane : wallEdgePlanes)
 	{
-		tmpAllPlane.push_back(plane);
+		for (auto p : plane.pointCloud->points)
+			allCloudFilled->push_back(p);
 	}
-	simpleView("connect the planes", tmpAllPlane);
+	simpleView("Connect wall planes", allCloudFilled);
 	
-	// mark: found outer planes for inner planes
-	/*
 	
-	for (size_t i = 0; i < filledPlanes.size(); i++) {
-		if (filledPlanes[i].type() != PlaneType_Other) continue;
-		Plane* source = &filledPlanes[i];
-		Eigen::Vector3d s_normal = source->getNormal();// calculatePlaneNormal(*source);
-		double s_slope = s_normal[1] / s_normal[0];
-		double s_b1 = source->leftUp().y - s_slope * source->leftUp().x;
-		double s_b2 = source->rightUp().y - s_slope * source->rightUp().x;
-		vector<Plane*> passedPlanes;
-		for (size_t j = 0; j < filledPlanes.size(); j++) {
-			Plane* target = &filledPlanes[j];
-			// mark: First, ingore calculate with self and calculate witl other non-main wall parts
-			if (i == j || target->type() == PlaneType_Other) continue;
-			Eigen::Vector3d t_normal = target->getNormal();//calculatePlaneNormal(*target);
-			// mark: Second, source plane should be inside in target plane (y-z,x-z plane)
-			if (target->leftUp().z < source->leftUp().z ||
-				target->rightUp().z < source->rightUp().z ||
-				target->leftDown().z > source->leftDown().z ||
-				target->rightDown().z > source->rightDown().z) {
-				continue;
-			}
-
-			// mark: Third, angle of two plane should smaller than minAngle
-			double angle = acos(s_normal.dot(t_normal) / (s_normal.norm()*t_normal.norm())) * 180 / M_PI;
-			if (angle > paras.minAngle_normalDiff) continue;
-
-			// TODO: in x-y plane, whether source plane could be covered by target plane
-			bool cond1_p1 = (target->leftUp().y <= (target->leftUp().x * s_slope + s_b1)) && (target->leftUp().y <= (target->leftUp().x * s_slope + s_b2));
-			bool cond1_p2 = (target->rightUp().y >= (target->rightUp().x * s_slope + s_b1)) && (target->rightUp().y >= (target->rightUp().x * s_slope + s_b2));
-
-			bool cond2_p1 = (target->leftUp().y >= (target->leftUp().x * s_slope + s_b1)) && (target->leftUp().y >= (target->leftUp().x * s_slope + s_b2));
-			bool cond2_p2 = (target->rightUp().y <= (target->rightUp().x * s_slope + s_b1)) && (target->rightUp().y <= (target->rightUp().x * s_slope + s_b2));
-
-			if ((cond1_p1 && cond1_p2) || (cond2_p1 && cond2_p2)) {
-				passedPlanes.push_back(target);
-			}
-		}
-
-		// mark: if passedPlanes exceed 1, we choose the nearest one.
-		// fixme: the center may not correct since we assume it is a perfect rectangular
-		if (!passedPlanes.empty()) {
-			float minDist = INT_MAX;
-			size_t minDist_index = 0;
-			PointT s_center;
-			s_center.x = (source->rightUp().x + source->leftUp().x) / 2;
-			s_center.y = (source->rightUp().y + source->leftUp().y) / 2;
-			s_center.y = (source->rightUp().z + source->rightDown().z) / 2;
-			for (size_t k = 0; k < passedPlanes.size(); ++k) {
-				PointT t_center;
-				t_center.x = (passedPlanes[k]->rightUp().x + passedPlanes[k]->leftUp().x) / 2;
-				t_center.y = (passedPlanes[k]->rightUp().y + passedPlanes[k]->leftUp().y) / 2;
-				t_center.y = (passedPlanes[k]->rightUp().z + passedPlanes[k]->rightDown().z) / 2;
-				if (pcl::geometry::distance(s_center, t_center) < minDist) {
-					minDist = pcl::geometry::distance(s_center, t_center);
-					minDist_index = k;
-				}
-			}
-			source->coveredPlane = passedPlanes[minDist_index];
-		}
-	}
-	*/
 	// mark: since we found the covered planes, we next extend these smaller planes to their covered planes.
 	vector<Plane> extenedPlanes;
 	int i = 0, j = 0;
@@ -412,13 +486,26 @@ int main(int argc, char** argv) {
 		}
 		extenedPlanes.push_back(tmp);
 	}
+
+	allCloudFilled->resize(0);
+	for (auto &plane : planeGroup)
+	{
+		for (auto p : plane.pointCloud->points)
+			allCloudFilled->push_back(p);
+	}
+	for (auto &plane : wallEdgePlanes)
+	{
+		for (auto p : plane.pointCloud->points)
+			allCloudFilled->push_back(p);
+	}
 	for (auto &plane : filledPlanes)
 	{
 		plane.setColor(PlaneColor::Color_Blue);
-		tmpAllPlane.push_back(plane);
+		for (auto p : plane.pointCloud->points)
+			allCloudFilled->push_back(p);
 	}
-	simpleView("connect the planes", tmpAllPlane);
-
+	simpleView("Extended Planes", allCloudFilled);
+	PointCloudT::Ptr roof(new PointCloudT);
 	// fill the ceiling and ground
 	{
 		PointT min, max;
@@ -437,8 +524,13 @@ int main(int argc, char** argv) {
 		filterZ.setFilterFieldName("z");
 		filterZ.setFilterLimits(min.z, min.z + 2 * step);
 		filterZ.filter(*downTemp);
+		PointT minTop, maxTop;
+		pcl::getMinMax3D(*topTemp, minTop, maxTop);
 
-		for (float i = min.x; i < max.x; i += step) { // NOLINT
+		simpleView("top", topTemp);
+		simpleView("down", downTemp);
+		
+		for (float i = minTop.x; i < maxTop.x; i += step) { // NOLINT
 			// extract x within [i,i+step] -> tempX
 			PointCloudT::Ptr topTempX(new PointCloudT);
 			PointCloudT::Ptr downTempX(new PointCloudT);
@@ -449,6 +541,8 @@ int main(int argc, char** argv) {
 			filterX.filter(*topTempX);
 			filterX.setInputCloud(downTemp);
 			filterX.filter(*downTempX);
+			if (downTemp->size() < 2) continue;
+			cout << "x " << i << "\n";
 			// found the minY and maxY
 			PointT topTempY_min, topTempY_max;
 			PointT downTempY_min, downTempY_max;
@@ -461,17 +555,15 @@ int main(int argc, char** argv) {
 			p2.x = i; p2.y = downTempY_min.y; p2.z = downTempY_min.z;
 			g2.x = i; g2.y = downTempY_max.y; g2.z = downTempY_min.z;
 			if (abs(p1.y) < 10000 && abs(p1.z) < 10000 && abs(g1.y) < 10000 && abs(g1.z) < 10000) {
-				generateLinePointCloud(p1, g1, paras.pointPitch, 0 << 24 | 255, allCloudFilled);
+				generateLinePointCloud(p1, g1, paras.pointPitch, 255, allCloudFilled);
 			}
 			if (abs(p2.y) < 10000 && abs(p2.z) < 10000 && abs(g2.y) < 10000 && abs(g2.z) < 10000) {
-				generateLinePointCloud(p2, g2, paras.pointPitch, 255 << 24 | 255, allCloudFilled);
+				generateLinePointCloud(p2, g2, paras.pointPitch, 255, allCloudFilled);
 			}
 		}
 	}
-
-
-	pcl::io::savePLYFile("OutputData/6_AllPlanes.ply", *allCloudFilled);
 	simpleView("cloud Filled", allCloudFilled);
+	pcl::io::savePLYFile("OutputData/6_AllPlanes.ply", *allCloudFilled);
 	return (0);
 }
 

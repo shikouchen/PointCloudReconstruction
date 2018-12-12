@@ -25,12 +25,19 @@ using namespace std;
 typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
+
+
+
 enum edgeType {
 	EdgeLeft,
 	EdgeRight,
 	EdgeDown,
 	EdgeUp,
+	EdgeNone,
 };
+
+
+
 
 enum PlaneOrientation {
 	Vertical,
@@ -55,7 +62,12 @@ enum PlaneColor {
 	Color_Random,
 };
 
+struct PlaneEdge {
 
+	edgeType connectedEdgeType;
+	bool isConnected;
+	PlaneEdge() : connectedEdgeType(EdgeNone), isConnected(false) {}
+};
 class Plane
 {
 private:
@@ -74,6 +86,9 @@ public:
 	Plane(PointCloudT::Ptr rawPointCloud, Eigen::Vector4d abcd);
 	Plane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch, PlaneColor color);
 
+	PlaneEdge leftEdge;
+	PlaneEdge rightEdge;
+	Plane *connectedPlane;
 	//test
 	int group_index = -1;
 	//test
@@ -101,9 +116,9 @@ public:
 	float getEdgeLength(edgeType type);
 	Eigen::Vector3d getNormal();
 	void removePointWithin(float xMin, float xMax, float yMin, float yMax, float zMin, float zMax);
-
 	//ransac
 	void runRANSAC(double distanceFromRANSACPlane, double ratio);
 };
+
 
 #endif

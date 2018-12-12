@@ -55,6 +55,7 @@ Reconstruction::Reconstruction(const string filePath) {
 		throw invalid_argument("the file type is not allowed");
 	if (fileType == "ply") {
 		if (pcl::io::loadPLYFile <PointT>(filePath, *this->pointCloud) == -1) { // the file doesnt exist
+			PCL_ERROR("The file does not exist\n");
 			throw invalid_argument("Cannot load the input file, please check and try again!\n");
 		}
 	}

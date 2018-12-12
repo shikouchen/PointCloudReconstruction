@@ -53,6 +53,7 @@ int colorType2int(PlaneColor colorType) {
 	return color;
 }
 
+
 //void importTXT(const string path, PointCloudT::Ptr cloud) {
 //	ifstream fin(path);
 //	if (!fin) {
@@ -288,7 +289,6 @@ void Plane::extendPlane(PointT a1, PointT a2, PointT b1, PointT b2, float pointP
 	generatePlanePointCloud(a1, a2, b1, b2, pointPitch, colorType2int(colorType));
 	updateBoundary();
 }
-
 
 void Plane::append(Plane const &plane) {
 	for (int i = 0; i < plane.pointCloud->size(); ++i) {
