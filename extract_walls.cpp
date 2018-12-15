@@ -32,6 +32,44 @@ typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
+void outputPlaneAsDxf(pcl::PointCloud<PointRGB>::Ptr cloud_forDXF_plane, string output_fileName);
+void outputPlaneToLineAsDxf(pcl::PointCloud<PointRGB>::Ptr cloud_forDXF_line, string output_fileName)
+{
+    cout << "壁面を線として、DXF形式で保存します。。。" << endl;
+    std::ofstream outputfileTextForDFXAsLine(output_fileName);
+    outputfileTextForDFXAsLine << "0" << endl;
+    outputfileTextForDFXAsLine << "SECTION" << endl;
+    outputfileTextForDFXAsLine << "2" << endl;
+    outputfileTextForDFXAsLine << "ENTITIES" << endl;
+    outputfileTextForDFXAsLine << "0" << endl;
+
+    for(size_t i = 0; i < cloud_forDXF_line->points.size (); ++i)
+    {
+        if(i % 2 == 0)
+        {
+            outputfileTextForDFXAsLine << "LINE" << endl;
+            outputfileTextForDFXAsLine << "8" << endl;
+            outputfileTextForDFXAsLine << "0" << endl;
+            outputfileTextForDFXAsLine << "10" << endl;
+            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].x << endl;
+            outputfileTextForDFXAsLine << "20" << endl;
+            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].y << endl;
+        }
+        else if(i % 2 == 1)
+        {
+            outputfileTextForDFXAsLine << "11" << endl;
+            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].x << endl;
+            outputfileTextForDFXAsLine << "21" << endl;
+            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].y << endl;
+            outputfileTextForDFXAsLine << "0" << endl;
+        }
+    }
+    outputfileTextForDFXAsLine << "ENDSEC" << endl;
+    outputfileTextForDFXAsLine << "0" << endl;
+    outputfileTextForDFXAsLine << "EOF";
+    outputfileTextForDFXAsLine.close();
+}
+
 /**
  * Gets a distance between two planes.
  *
@@ -182,7 +220,7 @@ struct reconstructParas
 	// Clustering
 	int MinSizeOfCluster = 50;
 	int NumberOfNeighbours = 30;
-	int SmoothnessThreshold = 2; // angle 360 degree
+	int SmoothnessThreshold = 5; // angle 360 degree
 	int CurvatureThreshold = 5;
 	// RANSAC
 	double RANSAC_DistThreshold = 0.25; //0.25; 
@@ -231,11 +269,20 @@ int main(int argc, char** argv) {
 		}
 		string fileName = argv[index];
 	#elif defined __unix__
-		string fileName = "/home/czh/Desktop/pointCloud PartTime/test/Room_E_Cloud_binary.ply";
+		//string fileName = "/home/czh/Desktop/pointCloud PartTime/test/Room_E_Cloud_binary.ply";
+		string fileName = "/home/czh/Desktop/Room_E_sensor3.ply";
 	#endif
 
 		cout << "\n***** start proceeing *****" << "\n";
 	Reconstruction re(fileName);
+    Eigen::Matrix4f transformation = Eigen::Matrix4f::Identity();
+    transformation(1,1) = cos(M_PI/2);  transformation(1,2) = sin(M_PI/2);
+    transformation(2,1) = -sin(M_PI/2); transformation(2,2) = cos(M_PI/2);
+    pcl::transformPointCloud(*re.pointCloud, *re.pointCloud, transformation);
+    for (auto &p:re.pointCloud->points){
+        p.rgba = INT32_MAX;
+    }
+
 	re.downSampling(paras.leafSize);
 	re.applyRegionGrow(paras.NumberOfNeighbours, paras.SmoothnessThreshold,
 		paras.CurvatureThreshold, paras.MinSizeOfCluster, paras.KSearch);
@@ -248,10 +295,11 @@ int main(int argc, char** argv) {
 		}
 		else if (plane.orientation == Vertical) {
 			plane.filledPlane(paras.pointPitch);
+			plane.setColor(Color_Random);
 			filledPlanes.push_back(plane);
 		}
 	}
-	simpleView("Filled RANSAC planes", planes);
+	simpleView("Filled RANSAC planes", filledPlanes);
 
 	// choose the two that have larger points as roof and ground
 	for (size_t j = 0; j < horizontalPlanes.size() < 2 ? horizontalPlanes.size() : 2; j++) {
@@ -276,7 +324,7 @@ int main(int argc, char** argv) {
 		ZLimits[1] = -upDownPlanes[0].abcd()[3];
 	}
 	cout << "\nHeight of room is " << ZLimits[1] - ZLimits[0] << endl;
-
+	cout << "Height range " << ZLimits[0] << " ~ "  << ZLimits[1] << endl;
 	// remove planes whose height are not meet condition
 	// remove planes whose has no near planes
 	for (size_t i = 0; i < filledPlanes.size(); i++)
@@ -361,23 +409,35 @@ int main(int argc, char** argv) {
 	simpleView("Filled RANSAC planes : Group Planes", planeGroup);
 	
 	cout << "\nHeight Filter: point lower than " << ZLimits[0] << " and higher than " << ZLimits[1] << endl;
-	for (Plane&plane:planeGroup)
-	{
+	for (Plane&plane:planeGroup) {
 		plane.runRANSAC(paras.RANSAC_DistThreshold, 0.8);
-		plane.filledPlane(paras.pointPitch, ZLimits[1], ZLimits[0]);
+		plane.applyFilter("z",ZLimits[0],ZLimits[1]);
+		PointT min,max;
+		pcl::getMinMax3D(*plane.pointCloud,min,max);
+		if ((max.z - min.z )/(ZLimits[1]-ZLimits[0]) >= 0.8 || plane.getEdgeLength(EdgeUp) > 3) {
+            plane.filledPlane(paras.pointPitch, ZLimits[1], ZLimits[0]);
+            plane.setType(PlaneType_MainWall);
+		}
+		else plane.filledPlane(paras.pointPitch, max.z, min.z);
 	}
+
 	simpleView("Filled RANSAC planes : Filled Group Planes", planeGroup);
-	/*
+
+    for (Plane&plane:planeGroup) {
+
+    }
+
 	// find nearest edges
 	vector<vector<int>> record(planeGroup.size(), vector<int>(2,-1));
 	for (int i = 0; i < planeGroup.size(); ++i) {
 		Plane* plane_s = &planeGroup[i];
+		if (plane_s->type() != PlaneType_MainWall) continue;
 		vector<float> tmpLeftEdgesDist(planeGroup.size()*2,INT32_MAX);
 		vector<float> tmpRightEdgesDist(planeGroup.size()*2, INT32_MAX);
 		for (int j = 0; j < planeGroup.size(); ++j) {
 			if (i == j) continue;
-				
 			Plane* plane_t = &planeGroup[j];
+            if (plane_t->type() != PlaneType_MainWall) continue;
 			float ll = (pcl::geometry::distance(plane_s->leftDown(),  plane_t->leftDown()));
 			float lr = (pcl::geometry::distance(plane_s->leftDown(),  plane_t->rightDown()));
 			float rl = (pcl::geometry::distance(plane_s->rightDown(), plane_t->leftDown()));
@@ -393,7 +453,7 @@ int main(int argc, char** argv) {
 
 		if (*minLeft <= paras.minimumEdgeDist) {
 			edgeType type = minIndex_left % 2 == 0 ? EdgeLeft : EdgeRight;
-			linkEdge(*plane_s, EdgeLeft, planeGroup[minIndex_left], type);
+			//linkEdge(*plane_s, EdgeLeft, planeGroup[minIndex_left], type);
 		}
 		
 
@@ -403,29 +463,28 @@ int main(int argc, char** argv) {
 
 		if (*minRight <= paras.minimumEdgeDist) {
 			edgeType type = minIndex_right % 2 == 0 ? EdgeLeft : EdgeRight;
-			linkEdge(*plane_s, EdgeRight, planeGroup[minIndex_right], type);
+			//linkEdge(*plane_s, EdgeRight, planeGroup[minIndex_right], type);
 		}
 	}
 	
-
-	for (Plane &plane : planeGroup) {
-		if (plane.leftEdge.connectedPlane && !plane.leftEdge.isConnected) {
-			Plane tmp;
-			connectTwoEdge(plane, EdgeLeft, *plane.leftEdge.connectedPlane, plane.leftEdge.connectedEdgeType, tmp);
-			wallEdgePlanes.push_back(tmp);
-		}
-		
-		if (plane.rightEdge.connectedPlane && !plane.rightEdge.isConnected){
-			Plane tmp;
-			connectTwoEdge(plane, EdgeRight, *plane.rightEdge.connectedPlane, plane.rightEdge.connectedEdgeType, tmp);
-			wallEdgePlanes.push_back(tmp);
-		}
-	}
+//
+//	for (Plane &plane : planeGroup) {
+//		if (plane.leftEdge.connectedPlane && !plane.leftEdge.isConnected) {
+//			Plane tmp;
+//			connectTwoEdge(plane, EdgeLeft, *plane.leftEdge.connectedPlane, plane.leftEdge.connectedEdgeType, tmp);
+//			wallEdgePlanes.push_back(tmp);
+//		}
+//
+//		if (plane.rightEdge.connectedPlane && !plane.rightEdge.isConnected){
+//			Plane tmp;
+//			connectTwoEdge(plane, EdgeRight, *plane.rightEdge.connectedPlane, plane.rightEdge.connectedEdgeType, tmp);
+//			wallEdgePlanes.push_back(tmp);
+//		}
+//	}
 
 	
 	for (int i = 0; i < planeGroup.size(); ++i) {
 		if (record[i][0] == -1) continue;
-		
 		//for faster if two edges connect each other
 		if (record[record[i][0] / 2][record[i][0] % 2] == 2*i) record[record[i][0] / 2][record[i][0] % 2] = -1;
 		
@@ -433,12 +492,16 @@ int main(int argc, char** argv) {
 		if (record[i][0] % 2 == 0) {
 			Plane filled(planeGroup[i].leftDown(), planeGroup[i].leftUp(),
 				planeGroup[leftTargetPlane].leftDown(), planeGroup[leftTargetPlane].leftUp(), paras.pointPitch, Color_Red);
+			planeGroup[i].isLeftConnected = true;
+			planeGroup[leftTargetPlane].isLeftConnected = true;
 			wallEdgePlanes.push_back(filled);
 		}
 		else if (record[i][0] % 2 == 1) {
 			Plane filled(planeGroup[i].leftDown(), planeGroup[i].leftUp(),
 				planeGroup[leftTargetPlane].rightDown(), planeGroup[leftTargetPlane].rightUp(), paras.pointPitch, Color_Red);
 			wallEdgePlanes.push_back(filled);
+			planeGroup[i].isLeftConnected = true;
+			planeGroup[leftTargetPlane].isRightConnected = true;
 		}
 
 
@@ -449,15 +512,31 @@ int main(int argc, char** argv) {
 			Plane filled(planeGroup[i].rightDown(), planeGroup[i].rightUp(),
 				planeGroup[rightTargetPlane].leftDown(), planeGroup[rightTargetPlane].leftUp(), paras.pointPitch, Color_Red);
 			wallEdgePlanes.push_back(filled);
+			planeGroup[i].isRightConnected = true;
+			planeGroup[leftTargetPlane].isLeftConnected = true;
 		}
 		else if (record[i][1] % 2 == 1) {
 			Plane filled(planeGroup[i].rightDown(), planeGroup[i].rightUp(),
 				planeGroup[rightTargetPlane].rightDown(), planeGroup[rightTargetPlane].rightUp(), paras.pointPitch, Color_Red);
 			wallEdgePlanes.push_back(filled);
+			planeGroup[i].isRightConnected = true;
+			planeGroup[leftTargetPlane].isRightConnected = true;
 		}
 		
 	}
-	*/
+
+	vector<Plane*> tmpFixConnectPlane;
+
+	for (auto &plane:planeGroup) {
+		if (plane.type() != PlaneType_MainWall) continue;
+		if (!plane.isLeftConnected) tmpFixConnectPlane.push_back(&plane);
+		if (!plane.isRightConnected) tmpFixConnectPlane.push_back(&plane);
+	}
+
+	assert(tmpFixConnectPlane.size() == 2);
+    Plane filled(tmpFixConnectPlane[0]->rightDown(), tmpFixConnectPlane[0]->rightUp(),
+                 tmpFixConnectPlane[1]->rightDown(), tmpFixConnectPlane[1]->rightUp(), paras.pointPitch, Color_Red);
+    wallEdgePlanes.push_back(filled);
 		
 	for (auto &plane:planeGroup)
 	{
@@ -470,22 +549,83 @@ int main(int argc, char** argv) {
 			allCloudFilled->push_back(p);
 	}
 	simpleView("Connect wall planes", allCloudFilled);
-	
-	
-	// mark: since we found the covered planes, we next extend these smaller planes to their covered planes.
-	vector<Plane> extenedPlanes;
-	int i = 0, j = 0;
-	for (auto &plane_s : planeGroup) {
-		if (numOfGroups[plane_s.group_index] == 1) continue;
-		Plane tmp;
-		for (auto &plane_t:filledPlanes)
-		{
-			if (plane_t.group_index != plane_s.group_index) continue;
-			extendSmallPlaneToBigPlane(plane_t, plane_s, 4294951115, paras.pointPitch, tmp.pointCloud);
-			
-		}
-		extenedPlanes.push_back(tmp);
-	}
+
+    for (size_t i = 0; i < planeGroup.size(); i++) {
+        if (planeGroup[i].type() != PlaneType_Other) continue;
+        Plane* source = &planeGroup[i];
+        Eigen::Vector3d s_normal = source->getNormal();// calculatePlaneNormal(*source);
+        double s_slope = s_normal[1] / s_normal[0];
+        double s_b1 = source->leftUp().y - s_slope * source->leftUp().x;
+        double s_b2 = source->rightUp().y - s_slope * source->rightUp().x;
+        vector<Plane*> passedPlanes;
+        for (size_t j = 0; j < planeGroup.size(); j++) {
+            Plane* target = &planeGroup[j];
+            // mark: First, ingore calculate with self and calculate witl other non-main wall parts
+            if (i == j || target->type() == PlaneType_Other) continue;
+            Eigen::Vector3d t_normal = target->getNormal();//calculatePlaneNormal(*target);
+            // mark: Second, source plane should be inside in target plane (y-z,x-z plane)
+            if (target->leftUp().z < source->leftUp().z ||
+                target->rightUp().z < source->rightUp().z ||
+                target->leftDown().z > source->leftDown().z ||
+                target->rightDown().z > source->rightDown().z) {
+                continue;
+            }
+
+            if (getDistance(*target,*source) > 2) continue;
+            // mark: Third, angle of two plane should smaller than minAngle
+            double angle = acos(s_normal.dot(t_normal) / (s_normal.norm()*t_normal.norm())) * 180 / M_PI;
+            if (angle > paras.minAngle_normalDiff) continue;
+
+            // TODO: in x-y plane, whether source plane could be covered by target plane
+            bool cond1_p1 = (target->leftUp().y <= (target->leftUp().x * s_slope + s_b1)) && (target->leftUp().y <= (target->leftUp().x * s_slope + s_b2));
+            bool cond1_p2 = (target->rightUp().y >= (target->rightUp().x * s_slope + s_b1)) && (target->rightUp().y >= (target->rightUp().x * s_slope + s_b2));
+
+            bool cond2_p1 = (target->leftUp().y >= (target->leftUp().x * s_slope + s_b1)) && (target->leftUp().y >= (target->leftUp().x * s_slope + s_b2));
+            bool cond2_p2 = (target->rightUp().y <= (target->rightUp().x * s_slope + s_b1)) && (target->rightUp().y <= (target->rightUp().x * s_slope + s_b2));
+
+            if ((cond1_p1 && cond1_p2) || (cond2_p1 && cond2_p2)) {
+                passedPlanes.push_back(target);
+            }
+        }
+
+        // mark: if passedPlanes exceed 1, we choose the nearest one.
+        // fixme: the center may not correct since we assume it is a perfect rectangular
+        if (!passedPlanes.empty()) {
+            float minDist = INT_MAX;
+            size_t minDist_index = 0;
+            PointT s_center;
+            s_center.x = (source->rightUp().x + source->leftUp().x) / 2;
+            s_center.y = (source->rightUp().y + source->leftUp().y) / 2;
+            s_center.y = (source->rightUp().z + source->rightDown().z) / 2;
+            for (size_t k = 0; k < passedPlanes.size(); ++k) {
+                PointT t_center;
+                t_center.x = (passedPlanes[k]->rightUp().x + passedPlanes[k]->leftUp().x) / 2;
+                t_center.y = (passedPlanes[k]->rightUp().y + passedPlanes[k]->leftUp().y) / 2;
+                t_center.y = (passedPlanes[k]->rightUp().z + passedPlanes[k]->rightDown().z) / 2;
+                if (pcl::geometry::distance(s_center, t_center) < minDist) {
+                    minDist = pcl::geometry::distance(s_center, t_center);
+                    minDist_index = k;
+                }
+            }
+            source->coveredPlane = passedPlanes[minDist_index];
+        }
+    }
+
+    // mark: since we found the covered planes, we next extend these smaller planes to their covered planes.
+    for (auto &filledPlane : planeGroup) {
+        Plane* plane = &filledPlane;
+        if (plane->coveredPlane == nullptr) continue;
+        plane->setColor(PlaneColor::Color_Green);
+        plane->coveredPlane->setColor(PlaneColor::Color_Yellow);
+        // mark: find the projection of plane to its covered plane -> pink
+        extendSmallPlaneToBigPlane(*plane, *plane->coveredPlane, 4294951115, paras.pointPitch, allCloudFilled);
+    }
+
+    for (int i = 0; i < planeGroup.size(); ++i) {
+        if (planeGroup[i].coveredPlane) continue;
+        if (planeGroup[i].type() == PlaneType_MainWall) continue;
+        planeGroup.erase(planeGroup.begin()+i--);
+    }
 
 	allCloudFilled->resize(0);
 	for (auto &plane : planeGroup)
@@ -495,12 +635,6 @@ int main(int argc, char** argv) {
 	}
 	for (auto &plane : wallEdgePlanes)
 	{
-		for (auto p : plane.pointCloud->points)
-			allCloudFilled->push_back(p);
-	}
-	for (auto &plane : filledPlanes)
-	{
-		plane.setColor(PlaneColor::Color_Blue);
 		for (auto p : plane.pointCloud->points)
 			allCloudFilled->push_back(p);
 	}
@@ -526,10 +660,6 @@ int main(int argc, char** argv) {
 		filterZ.filter(*downTemp);
 		PointT minTop, maxTop;
 		pcl::getMinMax3D(*topTemp, minTop, maxTop);
-
-		simpleView("top", topTemp);
-		simpleView("down", downTemp);
-		
 		for (float i = minTop.x; i < maxTop.x; i += step) { // NOLINT
 			// extract x within [i,i+step] -> tempX
 			PointCloudT::Ptr topTempX(new PointCloudT);
@@ -563,7 +693,17 @@ int main(int argc, char** argv) {
 		}
 	}
 	simpleView("cloud Filled", allCloudFilled);
-	pcl::io::savePLYFile("OutputData/6_AllPlanes.ply", *allCloudFilled);
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmpPC(new pcl::PointCloud<pcl::PointXYZRGB>);
+    for (auto &p:allCloudFilled->points) {
+        pcl::PointXYZRGB tmp;
+        tmp.x = p.x;
+        tmp.y = p.y;
+        tmp.z = p.z;
+        tmpPC->push_back(tmp);
+    }
+	pcl::io::savePLYFile("AllPlanes.ply", *tmpPC);
+   outputPlaneAsDxf(tmpPC,"AllPlanes.dxf");
+   outputPlaneToLineAsDxf(tmpPC,"line.dxf");
 	return (0);
 }
 
@@ -688,4 +828,66 @@ bool isIntersect(PointT p1, PointT q1, PointT p2, PointT q2)
 	if (o4 == 0 && onSegment(p2, q1, q2)) return true;
 
 	return false; // Doesn't fall in any of the above cases
+}
+
+void outputPlaneAsDxf(pcl::PointCloud<PointRGB>::Ptr cloud_forDXF_plane, string output_fileName)
+{
+    cout << "壁面を面として、DXF形式で保存します。。。" << endl;
+//それぞれの壁を直方体か平面で出力するとき
+    ofstream outputfileTextForDFX(output_fileName);
+    outputfileTextForDFX << "0" << endl;
+    outputfileTextForDFX << "SECTION" << endl;
+    outputfileTextForDFX << "2" << endl;
+    outputfileTextForDFX << "ENTITIES" << endl;
+    outputfileTextForDFX << "0" << endl;
+
+    for(size_t i = 0; i < cloud_forDXF_plane->points.size (); ++i)
+    {
+        PointRGB point = cloud_forDXF_plane->points[i];
+        if(i % 8 == 0 || i % 8 == 4)
+        {
+            outputfileTextForDFX << "3DFACE" << endl;
+            outputfileTextForDFX << "8" << endl;
+            outputfileTextForDFX << "0" << endl;
+            outputfileTextForDFX << "10" << endl;
+            outputfileTextForDFX << point.x << endl;
+            outputfileTextForDFX << "20" << endl;
+            outputfileTextForDFX << point.y << endl;
+            outputfileTextForDFX << "30" << endl;
+            outputfileTextForDFX << point.z << endl;
+        }
+        else if (i % 8 == 1 || i % 8 == 5)
+        {
+            outputfileTextForDFX << "11" << endl;
+            outputfileTextForDFX << point.x << endl;
+            outputfileTextForDFX << "21" << endl;
+            outputfileTextForDFX << point.y << endl;
+            outputfileTextForDFX << "31" << endl;
+            outputfileTextForDFX << point.z << endl;
+        }
+        else if (i % 8 == 2 || i % 8 == 6)
+        {
+            outputfileTextForDFX << "12" << endl;
+            outputfileTextForDFX << point.x << endl;
+            outputfileTextForDFX << "22" << endl;
+            outputfileTextForDFX << point.y << endl;
+            outputfileTextForDFX << "32" << endl;
+            outputfileTextForDFX << point.z << endl;
+        }
+        else if (i % 8 == 3 || i % 8 == 7)
+        {
+            outputfileTextForDFX << "13" << endl;
+            outputfileTextForDFX << point.x << endl;
+            outputfileTextForDFX << "23" << endl;
+            outputfileTextForDFX << point.y << endl;
+            outputfileTextForDFX << "33" << endl;
+            outputfileTextForDFX << point.z << endl;
+            outputfileTextForDFX << "0" << endl;
+        }
+
+    }
+    outputfileTextForDFX << "ENDSEC" << endl;
+    outputfileTextForDFX << "0" << endl;
+    outputfileTextForDFX << "EOF";
+    outputfileTextForDFX.close();
 }

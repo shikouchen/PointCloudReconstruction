@@ -26,8 +26,6 @@ typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
-
-
 enum edgeType {
 	EdgeLeft,
 	EdgeRight,
@@ -89,6 +87,9 @@ public:
 	PlaneEdge leftEdge;
 	PlaneEdge rightEdge;
 	Plane *connectedPlane;
+	bool isLeftConnected  = false;
+	bool isRightConnected = false;
+
 	//test
 	int group_index = -1;
 	//test
