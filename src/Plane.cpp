@@ -1,6 +1,7 @@
 #include "Plane.h"
 #include <iostream>
 #include <vector>
+#include <PlaneEdge.h>
 using namespace std;
 
 int32_t randomColor() {
@@ -296,7 +297,7 @@ void Plane::append(Plane const &plane) {
 	}
 }
 
-float Plane::getEdgeLength(edgeType type) {
+float Plane::getEdgeLength(EdgeType type) {
 	switch (type) {
 	case EdgeLeft:
 		return pcl::geometry::distance(this->_leftUp, this->_leftDown);

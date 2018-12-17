@@ -46,7 +46,8 @@ if(UNIX AND NOT APPLE)
             src/Plane.cpp
             src/SimpleView.cpp
             src/Reconstruction.cpp
-            src/SimpleView.cpp)
+            src/SimpleView.cpp
+			stc/PlaneEdge.cpp)
 
     # eigen
     include_directories( "/usr/include/eigen3/" )

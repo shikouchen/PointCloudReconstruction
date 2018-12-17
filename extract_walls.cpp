@@ -236,6 +236,7 @@ int main(int argc, char** argv) {
 
 		cout << "\n***** start proceeing *****" << "\n";
 	Reconstruction re(fileName);
+	
 	re.downSampling(paras.leafSize);
 	re.applyRegionGrow(paras.NumberOfNeighbours, paras.SmoothnessThreshold,
 		paras.CurvatureThreshold, paras.MinSizeOfCluster, paras.KSearch);

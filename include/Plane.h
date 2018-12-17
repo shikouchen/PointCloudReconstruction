@@ -21,22 +21,11 @@
 #include <pcl/filters/voxel_grid.h> //ダウンサンプリングのため
 #include <pcl/common/geometry.h>
 #include <pcl/filters/conditional_removal.h>
+#include <PlaneEdge.h>
 using namespace std;
 typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
-
-
-
-enum edgeType {
-	EdgeLeft,
-	EdgeRight,
-	EdgeDown,
-	EdgeUp,
-	EdgeNone,
-};
-
-
 
 
 enum PlaneOrientation {
@@ -62,12 +51,8 @@ enum PlaneColor {
 	Color_Random,
 };
 
-struct PlaneEdge {
 
-	edgeType connectedEdgeType;
-	bool isConnected;
-	PlaneEdge() : connectedEdgeType(EdgeNone), isConnected(false) {}
-};
+
 class Plane
 {
 private:
@@ -81,14 +66,19 @@ private:
 	void updateBoundary();
 
 public:
+	
 	Plane();
 	Plane(PointCloudT::Ptr rawPointCloud);
 	Plane(PointCloudT::Ptr rawPointCloud, Eigen::Vector4d abcd);
 	Plane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch, PlaneColor color);
 
-	PlaneEdge leftEdge;
-	PlaneEdge rightEdge;
-	Plane *connectedPlane;
+	//Plane *connectedPlane;
+	//Plane *rightEdgeConnectedPlane;
+	//Plane *leftEdgeConnectedPlane;
+
+	//edgeType rightEdgeConnectedType = edgeType::EdgeNone;
+	//edgeType leftEdgeConnectedType = edgeType::EdgeNone;
+
 	//test
 	int group_index = -1;
 	//test
@@ -113,7 +103,7 @@ public:
 	void extendPlane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch, PlaneColor colorType);
 	void extendPlane(PointT a1, PointT a2, PointT b1, PointT b2, float pointPitch);
 	void append(Plane const &plane);
-	float getEdgeLength(edgeType type);
+	float getEdgeLength(EdgeType type);
 	Eigen::Vector3d getNormal();
 	void removePointWithin(float xMin, float xMax, float yMin, float yMax, float zMin, float zMax);
 	//ransac
