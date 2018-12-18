@@ -89,7 +89,7 @@ public:
 	Plane *connectedPlane;
 	bool isLeftConnected  = false;
 	bool isRightConnected = false;
-
+	vector<vector<PointT>> extendedPlanesPoints;
 	//test
 	int group_index = -1;
 	//test

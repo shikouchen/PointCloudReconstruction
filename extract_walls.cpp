@@ -32,43 +32,7 @@ typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
-void outputPlaneAsDxf(pcl::PointCloud<PointRGB>::Ptr cloud_forDXF_plane, string output_fileName);
-void outputPlaneToLineAsDxf(pcl::PointCloud<PointRGB>::Ptr cloud_forDXF_line, string output_fileName)
-{
-    cout << "壁面を線として、DXF形式で保存します。。。" << endl;
-    std::ofstream outputfileTextForDFXAsLine(output_fileName);
-    outputfileTextForDFXAsLine << "0" << endl;
-    outputfileTextForDFXAsLine << "SECTION" << endl;
-    outputfileTextForDFXAsLine << "2" << endl;
-    outputfileTextForDFXAsLine << "ENTITIES" << endl;
-    outputfileTextForDFXAsLine << "0" << endl;
-
-    for(size_t i = 0; i < cloud_forDXF_line->points.size (); ++i)
-    {
-        if(i % 2 == 0)
-        {
-            outputfileTextForDFXAsLine << "LINE" << endl;
-            outputfileTextForDFXAsLine << "8" << endl;
-            outputfileTextForDFXAsLine << "0" << endl;
-            outputfileTextForDFXAsLine << "10" << endl;
-            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].x << endl;
-            outputfileTextForDFXAsLine << "20" << endl;
-            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].y << endl;
-        }
-        else if(i % 2 == 1)
-        {
-            outputfileTextForDFXAsLine << "11" << endl;
-            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].x << endl;
-            outputfileTextForDFXAsLine << "21" << endl;
-            outputfileTextForDFXAsLine << cloud_forDXF_line->points[i].y << endl;
-            outputfileTextForDFXAsLine << "0" << endl;
-        }
-    }
-    outputfileTextForDFXAsLine << "ENDSEC" << endl;
-    outputfileTextForDFXAsLine << "0" << endl;
-    outputfileTextForDFXAsLine << "EOF";
-    outputfileTextForDFXAsLine.close();
-}
+void outputPlaneAsDxf(vector<vector<PointT>> cloud_forDXF_plane, string output_fileName);
 
 /**
  * Gets a distance between two planes.
@@ -251,6 +215,7 @@ int main(int argc, char** argv) {
 	vector<Plane> horizontalPlanes;
 	vector<Plane> upDownPlanes;
 	vector<Plane> wallEdgePlanes;
+    vector<vector<PointT>> dxfPoints;
 	#ifdef _WIN32
 		
 		int index;
@@ -511,6 +476,9 @@ int main(int argc, char** argv) {
 		if (record[i][1] % 2 == 0) {
 			Plane filled(planeGroup[i].rightDown(), planeGroup[i].rightUp(),
 				planeGroup[rightTargetPlane].leftDown(), planeGroup[rightTargetPlane].leftUp(), paras.pointPitch, Color_Red);
+			vector<PointT> tmp{planeGroup[i].rightDown(), planeGroup[i].rightUp(),
+                               planeGroup[rightTargetPlane].leftDown(), planeGroup[rightTargetPlane].leftUp()};
+			dxfPoints.push_back(tmp);
 			wallEdgePlanes.push_back(filled);
 			planeGroup[i].isRightConnected = true;
 			planeGroup[leftTargetPlane].isLeftConnected = true;
@@ -519,6 +487,9 @@ int main(int argc, char** argv) {
 			Plane filled(planeGroup[i].rightDown(), planeGroup[i].rightUp(),
 				planeGroup[rightTargetPlane].rightDown(), planeGroup[rightTargetPlane].rightUp(), paras.pointPitch, Color_Red);
 			wallEdgePlanes.push_back(filled);
+			vector<PointT> tmp{planeGroup[i].rightDown(), planeGroup[i].rightUp(),
+                               planeGroup[rightTargetPlane].rightDown(), planeGroup[rightTargetPlane].rightUp()};
+            dxfPoints.push_back(tmp);
 			planeGroup[i].isRightConnected = true;
 			planeGroup[leftTargetPlane].isRightConnected = true;
 		}
@@ -537,6 +508,9 @@ int main(int argc, char** argv) {
     Plane filled(tmpFixConnectPlane[0]->rightDown(), tmpFixConnectPlane[0]->rightUp(),
                  tmpFixConnectPlane[1]->rightDown(), tmpFixConnectPlane[1]->rightUp(), paras.pointPitch, Color_Red);
     wallEdgePlanes.push_back(filled);
+    vector<PointT> tmp{tmpFixConnectPlane[0]->rightDown(), tmpFixConnectPlane[0]->rightUp(),
+                       tmpFixConnectPlane[1]->rightDown(), tmpFixConnectPlane[1]->rightUp()};
+    dxfPoints.push_back(tmp);
 		
 	for (auto &plane:planeGroup)
 	{
@@ -692,18 +666,17 @@ int main(int argc, char** argv) {
 			}
 		}
 	}
-	simpleView("cloud Filled", allCloudFilled);
-    pcl::PointCloud<pcl::PointXYZRGB>::Ptr tmpPC(new pcl::PointCloud<pcl::PointXYZRGB>);
-    for (auto &p:allCloudFilled->points) {
-        pcl::PointXYZRGB tmp;
-        tmp.x = p.x;
-        tmp.y = p.y;
-        tmp.z = p.z;
-        tmpPC->push_back(tmp);
+
+
+    for(auto& plane:planeGroup) {
+        vector<PointT> tmp{plane.leftDown(),plane.leftUp(),plane.rightDown(),plane.rightUp()};
+        dxfPoints.push_back(tmp);
+        if (plane.extendedPlanesPoints.size() > 0){
+            for(auto &ps:plane.extendedPlanesPoints) dxfPoints.push_back(ps);
+        }
     }
-	pcl::io::savePLYFile("AllPlanes.ply", *tmpPC);
-   outputPlaneAsDxf(tmpPC,"AllPlanes.dxf");
-   outputPlaneToLineAsDxf(tmpPC,"line.dxf");
+	simpleView("cloud Filled", allCloudFilled);
+   outputPlaneAsDxf(dxfPoints,"AllPlanes.dxf");
 	return (0);
 }
 
@@ -749,19 +722,20 @@ void extendSmallPlaneToBigPlane(Plane& sourceP, Plane& targetP, int color, int p
 	q1.x = X1[0]; q1.y = X1[1]; q1.z = sourceP.leftDown().z;
 	p2.x = X2[0]; p2.y = X2[1]; p2.z = sourceP.leftUp().z;
 	q2.x = X2[0]; q2.y = X2[1]; q2.z = sourceP.leftDown().z;
-
-	//cout << "p1 " << p1.x << " " << p1.y << " " << p1.z << endl;
-	//cout << "p2 " << p2.x << " " << p2.y << " " << p2.z << endl;
-	//cout << "q1 " << q1.x << " " << q1.y << " " << q1.z << endl;
-	//cout << "q2 " << q2.x << " " << q2.y << " " << q2.z << endl;
-	//cout << "leftUp " << sourceP.leftUp().x << " " << sourceP.leftUp().y << " " << sourceP.leftUp().z << endl;
-	//cout << "rightUp " << sourceP.rightUp().x << " " << sourceP.rightUp().y << " " << sourceP.rightUp().z << endl;
-
 	Plane all;
 	Plane tmp_a(p1, q1, sourceP.leftUp(), sourceP.leftDown(), pointPitch, Color_Peach);
 	Plane tmp_b(p2, q2, sourceP.rightUp(), sourceP.rightDown(), pointPitch, Color_Peach);
 	Plane tmp_c(p1, p2, sourceP.leftUp(), sourceP.rightUp(), pointPitch, Color_Peach);
 	Plane tmp_d(q1, q2, sourceP.leftDown(), sourceP.rightDown(), pointPitch, Color_Peach);
+	vector<PointT> a{p1, q1, sourceP.leftUp(), sourceP.leftDown()};
+    vector<PointT> b{p2, q2, sourceP.rightUp(), sourceP.rightDown()};
+    vector<PointT> c{p1, p2, sourceP.leftUp(), sourceP.rightUp()};
+    vector<PointT> d{q1, q2, sourceP.leftDown(), sourceP.rightDown()};
+	sourceP.extendedPlanesPoints.push_back(a);
+    sourceP.extendedPlanesPoints.push_back(b);
+    sourceP.extendedPlanesPoints.push_back(c);
+    sourceP.extendedPlanesPoints.push_back(d);
+
 	sourceP.append(tmp_a); sourceP.append(tmp_b); sourceP.append(tmp_c); sourceP.append(tmp_d);
 
 	// mark: remove the point which located within four points
@@ -830,7 +804,7 @@ bool isIntersect(PointT p1, PointT q1, PointT p2, PointT q2)
 	return false; // Doesn't fall in any of the above cases
 }
 
-void outputPlaneAsDxf(pcl::PointCloud<PointRGB>::Ptr cloud_forDXF_plane, string output_fileName)
+void outputPlaneAsDxf(vector<vector<PointT>> cloud_forDXF_plane, string output_fileName)
 {
     cout << "壁面を面として、DXF形式で保存します。。。" << endl;
 //それぞれの壁を直方体か平面で出力するとき
@@ -840,52 +814,40 @@ void outputPlaneAsDxf(pcl::PointCloud<PointRGB>::Ptr cloud_forDXF_plane, string 
     outputfileTextForDFX << "2" << endl;
     outputfileTextForDFX << "ENTITIES" << endl;
     outputfileTextForDFX << "0" << endl;
+    for (auto&points : cloud_forDXF_plane) {
+        outputfileTextForDFX << "3DFACE" << endl;
+        outputfileTextForDFX << "8" << endl;
+        outputfileTextForDFX << "0" << endl;
+        outputfileTextForDFX << "10" << endl;
+        outputfileTextForDFX << points[0].x << endl;
+        outputfileTextForDFX << "20" << endl;
+        outputfileTextForDFX << points[0].y << endl;
+        outputfileTextForDFX << "30" << endl;
+        outputfileTextForDFX << points[0].z << endl;
 
-    for(size_t i = 0; i < cloud_forDXF_plane->points.size (); ++i)
-    {
-        PointRGB point = cloud_forDXF_plane->points[i];
-        if(i % 8 == 0 || i % 8 == 4)
-        {
-            outputfileTextForDFX << "3DFACE" << endl;
-            outputfileTextForDFX << "8" << endl;
-            outputfileTextForDFX << "0" << endl;
-            outputfileTextForDFX << "10" << endl;
-            outputfileTextForDFX << point.x << endl;
-            outputfileTextForDFX << "20" << endl;
-            outputfileTextForDFX << point.y << endl;
-            outputfileTextForDFX << "30" << endl;
-            outputfileTextForDFX << point.z << endl;
-        }
-        else if (i % 8 == 1 || i % 8 == 5)
-        {
-            outputfileTextForDFX << "11" << endl;
-            outputfileTextForDFX << point.x << endl;
-            outputfileTextForDFX << "21" << endl;
-            outputfileTextForDFX << point.y << endl;
-            outputfileTextForDFX << "31" << endl;
-            outputfileTextForDFX << point.z << endl;
-        }
-        else if (i % 8 == 2 || i % 8 == 6)
-        {
-            outputfileTextForDFX << "12" << endl;
-            outputfileTextForDFX << point.x << endl;
-            outputfileTextForDFX << "22" << endl;
-            outputfileTextForDFX << point.y << endl;
-            outputfileTextForDFX << "32" << endl;
-            outputfileTextForDFX << point.z << endl;
-        }
-        else if (i % 8 == 3 || i % 8 == 7)
-        {
-            outputfileTextForDFX << "13" << endl;
-            outputfileTextForDFX << point.x << endl;
-            outputfileTextForDFX << "23" << endl;
-            outputfileTextForDFX << point.y << endl;
-            outputfileTextForDFX << "33" << endl;
-            outputfileTextForDFX << point.z << endl;
-            outputfileTextForDFX << "0" << endl;
-        }
+        outputfileTextForDFX << "11" << endl;
+        outputfileTextForDFX << points[1].x << endl;
+        outputfileTextForDFX << "21" << endl;
+        outputfileTextForDFX << points[1].y << endl;
+        outputfileTextForDFX << "31" << endl;
+        outputfileTextForDFX << points[1].z << endl;
 
+        outputfileTextForDFX << "12" << endl;
+        outputfileTextForDFX << points[3].x << endl;
+        outputfileTextForDFX << "22" << endl;
+        outputfileTextForDFX << points[3].y << endl;
+        outputfileTextForDFX << "32" << endl;
+        outputfileTextForDFX << points[3].z << endl;
+
+        outputfileTextForDFX << "13" << endl;
+        outputfileTextForDFX << points[2].x << endl;
+        outputfileTextForDFX << "23" << endl;
+        outputfileTextForDFX << points[2].y << endl;
+        outputfileTextForDFX << "33" << endl;
+        outputfileTextForDFX << points[2].z << endl;
+        outputfileTextForDFX << "0" << endl;
     }
+
     outputfileTextForDFX << "ENDSEC" << endl;
     outputfileTextForDFX << "0" << endl;
     outputfileTextForDFX << "EOF";
