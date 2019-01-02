@@ -4,4 +4,6 @@ OutputData/*
 TestData
 test
 .vs
-
+.idea/*
+cmake-build-debug/*
+*.dxf
