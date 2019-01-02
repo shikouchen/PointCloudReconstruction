@@ -3,7 +3,7 @@ if (WIN32)
     cmake_minimum_required( VERSION 2.8 )
 
     # Create Project
-    project( extract_walls )
+    project( Reconstruction )
     add_executable( project extract_walls.cpp )
 
     # Set StartUp Project (Option)
@@ -34,7 +34,7 @@ endif (WIN32)
 
 if(UNIX AND NOT APPLE)
     cmake_minimum_required( VERSION 2.8 )
-    project( test_pcl )
+    project( Reconstruction )
 
     set( CMAKE_BUILD_TYPE Release )
     set( CMAKE_CXX_FLAGS "-std=c++11 -O3" )
@@ -65,4 +65,7 @@ if(UNIX AND NOT APPLE)
 
     add_executable(extractWall extract_walls.cpp)
     target_link_libraries (extractWall ${PROJECT_NAME})
+    add_executable(DownSampling src/Downsampling.cpp)
+    target_link_libraries (DownSampling ${PROJECT_NAME})
+
 endif()
