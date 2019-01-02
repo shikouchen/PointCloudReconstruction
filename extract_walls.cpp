@@ -232,6 +232,7 @@ int main(int argc, char** argv) {
 		string fileName = argv[index];
 	#elif defined __unix__
 		string fileName = "/home/czh/Desktop/pointCloud PartTime/test/Room_E_Cloud_binary.ply";
+		if(argv[1] != "") fileName = argv[1];
 	#endif
 
 		cout << "\n***** start proceeing *****" << "\n";
