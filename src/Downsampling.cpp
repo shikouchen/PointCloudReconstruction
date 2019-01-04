@@ -48,9 +48,9 @@ int main(int argc, char** argv) {
     float leafSize = stod(argv[2]) ;
     unsigned int interval = atoi(argv[3]);
     string outputName(argv[4]);
-    cout << "==================================" << "\n";
+    cout << "=====================================" << "\n";
     cout << "Leaf Size: " << leafSize << " | " << "Interval: " << interval << "\n";
-    cout << "==================================" << "\n";
+    cout << "=====================================" << "\n";
     int snaps = 0;
     unsigned int total = snaps*interval;
     while(1) {
