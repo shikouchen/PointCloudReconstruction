@@ -88,6 +88,10 @@ Reconstruction::Reconstruction(const string filePath) {
 	}
 }
 
+Reconstruction::Reconstruction(PointCloudT::Ptr cloud) {
+    this->pointCloud = cloud;
+}
+
 void Reconstruction::downSampling(float leafSize)
 {
 	if (leafSize == -1) {
@@ -139,7 +143,16 @@ void Reconstruction::applyRegionGrow(int NumberOfNeighbours, int SmoothnessThres
 	ss << "num of Clusters: " << this->clusters.size();
 	debugPrint(ss);
 }
+void Reconstruction::getClusterPts(PointCloudT::Ptr output){
+	output->resize(0);
 
+	for(auto &cluster:clusters){
+		for (auto &p: cluster->points) {
+			output->push_back(p);
+		}
+	}
+
+}
 void Reconstruction::applyRANSACtoClusters(float RANSAC_DistThreshold, float RANSAC_PlaneVectorThreshold,
 	float RANSAC_MinInliers) {
 	stringstream ss;

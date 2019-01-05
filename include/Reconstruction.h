@@ -15,6 +15,7 @@ class Reconstruction
 
 public:
 	Reconstruction(const string filePath);
+    Reconstruction(PointCloudT::Ptr cloud);
 	bool isPrintDebugInfo = true;
 	bool isOutputEachStep = true;
 	string outputPath = "OutputData/";
@@ -22,6 +23,8 @@ public:
 	PointCloudT::Ptr pointCloud;
 	void downSampling(float leafSize);
 	void applyRegionGrow(int NumberOfNeighbours, int SmoothnessThreshold, int CurvatureThreshold, int MinSizeOfCluster, int KSearch);
+	void getClusterPts(PointCloudT::Ptr output);
+
 	void applyRANSACtoClusters(float RANSAC_DistThreshold, float RANSAC_PlaneVectorThreshold,
 		float RANSAC_MinInliers);
 	// output methods
