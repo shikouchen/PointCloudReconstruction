@@ -82,7 +82,6 @@ int main(int argc, char** argv) {
 	ifstream se(argv[2],ifstream::binary);
 	Json::Value settings;
 	se >> settings;
-    cout << settings << endl;
 	paras.KSearch = settings["KSearch"].asInt();
     paras.leafSize = settings["leafSize"].asFloat(); // unit is meter -> 5cm
     paras.MinSizeOfCluster = settings["MinSizeOfCluster"].asInt();
@@ -305,7 +304,7 @@ int main(int argc, char** argv) {
 	}
 
 	// fill the ceiling and ground
-	{
+	/*{
 		PointT min, max;
 		float step = 1 / (float)paras.pointPitch;
 		pcl::getMinMax3D(*allCloudFilled, min, max);
@@ -352,7 +351,7 @@ int main(int argc, char** argv) {
 				generateLinePointCloud(p2, g2, paras.pointPitch, 255 << 24 | 255, allCloudFilled);
 			}
 		}
-	}
+	}*/
 
 
 	pcl::io::savePLYFile("OutputData/6_AllPlanes.ply", *allCloudFilled);
