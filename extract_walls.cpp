@@ -22,6 +22,8 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <pcl/common/geometry.h>
 #include <pcl/filters/conditional_removal.h>
+#include <jsoncpp/json/value.h>
+#include <jsoncpp/json/json.h>
 #include "extract_walls.h"
 #include "Model.h"
 #include "Plane.h"
@@ -31,7 +33,6 @@ using namespace std;
 typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
-
 struct reconstructParas
 {
 	// Downsampling
@@ -39,10 +40,10 @@ struct reconstructParas
 	float leafSize = 0.05; // unit is meter -> 5cm
 
 	// Clustering
-	int MinSizeOfCluster = 50;
+	int MinSizeOfCluster = 800;
 	int NumberOfNeighbours = 30;
-	int SmoothnessThreshold = 2; // angle 360 degree
-	int CurvatureThreshold = 5;
+	int SmoothnessThreshold = 5; // angle 360 degree
+	int CurvatureThreshold = 10;
 	// RANSAC
 	double RANSAC_DistThreshold = 0.25; //0.25; 
 	float RANSAC_MinInliers = 0.5; // 500 todo: should be changed to percents
@@ -64,7 +65,6 @@ PlaneColor innerPlaneColor = Color_Blue;
 PlaneColor upDownPlaneColor = Color_Green;
 
 int main(int argc, char** argv) {
-
 	PCL_WARN("This program is based on assumption that ceiling and ground on the X-Y  \n");
 	pcl::console::setVerbosityLevel(pcl::console::L_ALWAYS); // for not show the warning
 	PointCloudT::Ptr allCloudFilled(new PointCloudT);
@@ -77,7 +77,27 @@ int main(int argc, char** argv) {
 		string fileName = "TestData/Room_A.ply";
 	#elif defined __unix__
 		string fileName = "/home/czh/Desktop/pointCloud PartTime/test/Room_E_Cloud_binary.ply";
-	#endif
+		if(argv[1] != "") fileName = argv[1];
+    #endif
+	ifstream se(argv[2],ifstream::binary);
+	Json::Value settings;
+	se >> settings;
+    cout << settings << endl;
+	paras.KSearch = settings["KSearch"].asInt();
+    paras.leafSize = settings["leafSize"].asFloat(); // unit is meter -> 5cm
+    paras.MinSizeOfCluster = settings["MinSizeOfCluster"].asInt();
+    paras.NumberOfNeighbours = settings["NumberOfNeighbours"].asInt();
+    paras.SmoothnessThreshold = settings["SmoothnessThreshold"].asInt(); // angle 360 degree
+    paras.CurvatureThreshold = settings["CurvatureThreshold"].asInt();
+    paras.RANSAC_DistThreshold = settings["RANSAC_DistThreshold"].asFloat(); //0.25;
+    paras.RANSAC_MinInliers = settings["RANSAC_MinInliers"].asFloat(); // 500
+    paras.RANSAC_PlaneVectorThreshold = settings["RANSAC_PlaneVectorThreshold"].asFloat();
+    paras.pointPitch = settings["pointPitch"].asInt();
+    paras.minimumEdgeDist = settings["minimumEdgeDist"].asInt();
+    paras.minHeightDiff = settings["minHeightDiff"].asFloat();
+    paras.minAngle_normalDiff = settings["minAngle_normalDiff"].asInt();
+
+
 	Reconstruction re(fileName);
 	re.downSampling(paras.leafSize);
 	//re.outputFile("TestData/Room_F.ply");
