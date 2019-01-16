@@ -6,4 +6,3 @@ test
 .vs
 .idea/
 cmake-build-debug/
-settings.json
