@@ -36,7 +36,7 @@ if(UNIX AND NOT APPLE)
     cmake_minimum_required( VERSION 2.8 )
     project( Reconstruction )
 
-    set( CMAKE_BUILD_TYPE Release )
+    set( CMAKE_BUILD_TYPE DEBUG )
     set( CMAKE_CXX_FLAGS "-std=c++11 -O3" )
 
     include_directories(include/)
@@ -46,7 +46,8 @@ if(UNIX AND NOT APPLE)
             src/Plane.cpp
             src/SimpleView.cpp
             src/Reconstruction.cpp
-            src/SimpleView.cpp)
+            src/SimpleView.cpp
+            src/DxfExporter.cpp)
 
     # eigen
     include_directories( "/usr/include/eigen3/" )
@@ -61,6 +62,17 @@ if(UNIX AND NOT APPLE)
 
     target_link_libraries(${PROJECT_NAME}
             ${PCL_LIBRARIES})
+
+    ## Google Test
+    # Locate GTest
+    find_package(GTest REQUIRED)
+    include_directories(${GTEST_INCLUDE_DIRS})
+
+    # Add test cpp file
+    add_executable(UnitTest UnitTest/test.cpp)
+
+    # Link test executable against gtest & gtest_main
+    target_link_libraries(UnitTest ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES} pthread)
 
 
     add_executable(extractWall extract_walls.cpp)
