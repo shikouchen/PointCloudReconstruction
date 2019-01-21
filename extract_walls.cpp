@@ -342,8 +342,9 @@ int main(int argc, char** argv) {
 	{
 		if(filledPlanes[i].group_index != -1) filledPlanes[i].setColor(colors[filledPlanes[i].group_index]);
 	}
+//<<<<<<< Updated upstream
 
-	
+
 	vector<Plane> planeGroup;
 	vector<int> numOfGroups(G_index+1, 0);
 	for (size_t i = 0; i <= G_index; i++)
@@ -353,6 +354,15 @@ int main(int argc, char** argv) {
 			if (plane.group_index != i) continue;
 			numOfGroups[i]+=1;
 			for (auto &p : plane.pointCloud->points) tmp->push_back(p);
+//=======
+//	PointCloudT::Ptr roofClusterPts(new PointCloudT);
+//	for (int l = 0; l < roofEdgeClusters.size(); ++l) {
+//		int color = 255 <<24 | colors[l][0] << 16 | colors[l][1] << 8 | colors[l][2];
+//        roofEdgeClustersCoffs[l]
+//		for (auto &p:roofEdgeClusters[l]->points) {
+//			p.rgba = color;
+//			roofClusterPts->push_back(p);
+//>>>>>>> Stashed changes
 		}
 		Plane plane(tmp);
 		plane.group_index = i;
