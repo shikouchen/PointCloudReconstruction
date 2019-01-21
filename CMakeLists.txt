@@ -72,7 +72,7 @@ if(UNIX AND NOT APPLE)
     add_executable(UnitTest UnitTest/test.cpp)
 
     # Link test executable against gtest & gtest_main
-    target_link_libraries(UnitTest ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES} pthread)
+    target_link_libraries(UnitTest ${PROJECT_NAME} ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES} pthread)
 
 
     add_executable(extractWall extract_walls.cpp)

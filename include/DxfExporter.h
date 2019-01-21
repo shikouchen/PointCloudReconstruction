@@ -38,13 +38,16 @@ namespace KKRecons{
     class DxfExporter{
     public:
         DxfExporter(string fileName);
-        void insert(DxfFace plane);
+        void insert(DxfFace face);
         void exportDXF(string path);
+        const int size() const { return faces.size(); };
     private:
         string fileName;
-        vector<DxfFace> planes;
-        string getHeaderPart();
-        string getEndPart();
+        vector<DxfFace> faces;
+        void addHeaderPart(ofstream &output);
+        void addEndPart(ofstream &output);
+        void addTriangleFace(ofstream &output, Point a, Point b, Point c);
+        void addRectFace(ofstream &output, Point a, Point b, Point c, Point d);
         string getPlanesPart();
     };
 }
