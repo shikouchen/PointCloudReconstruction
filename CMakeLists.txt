@@ -68,11 +68,14 @@ if(UNIX AND NOT APPLE)
     find_package(GTest REQUIRED)
     include_directories(${GTEST_INCLUDE_DIRS})
 
+    find_package(  yaml-cpp REQUIRED )
+    target_link_libraries(${PROJECT_NAME} ${YAML_CPP_LIBRARIES})
+
     # Add test cpp file
     add_executable(UnitTest UnitTest/test.cpp)
 
     # Link test executable against gtest & gtest_main
-    target_link_libraries(UnitTest ${PROJECT_NAME} ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES} pthread)
+    target_link_libraries(UnitTest ${PROJECT_NAME} ${GTEST_LIBRARIES} ${GTEST_MAIN_LIBRARIES}  pthread)
 
 
     add_executable(extractWall extract_walls.cpp)

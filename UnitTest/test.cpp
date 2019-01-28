@@ -6,6 +6,7 @@
 #include <DxfExporter.h>
 #include <iostream>
 #include <fstream>
+#include <yaml-cpp/yaml.h>
 //#include <pcl/point_types.h>
 using namespace std;
 TEST(DXF,Init){
@@ -68,4 +69,14 @@ TEST(DXF, Export) {
     ASSERT_NO_THROW(exporter.exportDXF("./"););
     FILE *file = fopen("./testDxfFile.dxf", "r");
     ASSERT_NE(file, nullptr);
+}
+
+TEST(YAML, BASIC) {
+    YAML::Node config = YAML::LoadFile("config.yaml");
+    YAML::Node RANSAC = config["RANSAC"];
+    YAML::Node ParaRANSAC = RANSAC["value1"];
+    cout << RANSAC["value1"] << endl;
+
+
+    //YAML::Node config2;
 }
