@@ -22,15 +22,19 @@
 #include <pcl/common/common.h>
 #include <pcl/common/geometry.h>
 #include <pcl/visualization/pcl_visualizer.h>
+#include <yaml-cpp/yaml.h>
 #include "extract_walls.h"
 #include "Model.h"
 #include "Plane.h"
 #include "SimpleView.h"
 #include "Reconstruction.h"
+
 using namespace std;
 typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
+
+
 
 /**
  * Gets a distance between two planes.
@@ -174,28 +178,27 @@ void connectTwoEdge(Plane& plane_a, edgeType edge_a, Plane& plane_b, edgeType ed
 struct reconstructParas
 {
 	// Downsampling
-	int KSearch = 10;
-	float leafSize = 0.05; // unit is meter -> 5cm
-
+	int KSearch = 0;
+	float leafSize = 0; // unit is meter -> 5cm
 	// Plane height threshold
-	float minPlaneHeight = 0.2;
+	float minPlaneHeight = 0;
 	// Clustering
-	int MinSizeOfCluster = 50;
-	int NumberOfNeighbours = 30;
-	int SmoothnessThreshold = 2; // angle 360 degree
-	int CurvatureThreshold = 5;
+	int MinSizeOfCluster = 0;
+	int NumberOfNeighbours = 0;
+	int SmoothnessThreshold = 0; // angle 360 degree
+	int CurvatureThreshold = 0;
 	// RANSAC
-	double RANSAC_DistThreshold = 0.25; //0.25; 
-	float RANSAC_MinInliers = 0.5; // 500 todo: should be changed to percents
-	float RANSAC_PlaneVectorThreshold = 0.2;
+	double RANSAC_DistThreshold = 0; //0.25;
+	float RANSAC_MinInliers = 0; // 500 todo: should be changed to percents
+	float RANSAC_PlaneVectorThreshold = 0;
 
 	// Fill the plane
-	int pointPitch = 20; // number of point in 1 meter
+	int pointPitch = 0; // number of point in 1 meter
 
 	// Combine planes
-	float minimumEdgeDist = 1; //we control the distance between two edges and the height difference between two edges
-	float minPlanesDist = 0.4; // when clustering RANSAC planes, the min distance between two planes
-	float minAngle_normalDiff = 10.0;// when extend smaller plane to bigger plane, we will calculate the angle between normals of planes
+	float minimumEdgeDist = 0; //we control the distance between two edges and the height difference between two edges
+	float minPlanesDist = 0; // when clustering RANSAC planes, the min distance between two planes
+	float minAngle_normalDiff = 0;// when extend smaller plane to bigger plane, we will calculate the angle between normals of planes
 }paras;
 
 // color
@@ -203,7 +206,7 @@ PlaneColor commonPlaneColor = Color_White;
 PlaneColor outerPlaneColor = Color_Yellow;
 PlaneColor innerPlaneColor = Color_Blue;
 PlaneColor upDownPlaneColor = Color_Green;
-
+void importConfig(const YAML::Node& node, reconstructParas &para);
 
 int main(int argc, char** argv) {
 	PCL_WARN("This program is based on assumption that ceiling and ground on the X-Y  \n");
@@ -213,6 +216,7 @@ int main(int argc, char** argv) {
 	vector<Plane> horizontalPlanes;
 	vector<Plane> upDownPlanes;
 	vector<Plane> wallEdgePlanes;
+	string configPath;
 	#ifdef _WIN32
 		
 		int index;
@@ -233,8 +237,10 @@ int main(int argc, char** argv) {
 	#elif defined __unix__
 		string fileName = "/home/czh/Desktop/pointCloud PartTime/test/Room_E_Cloud_binary.ply";
 		if(argv[1] != "") fileName = argv[1];
-	#endif
-
+        YAML::Node config = YAML::LoadFile(argv[2] == "" ? "./config.yaml" : argv[2]);
+        importConfig(config,paras);
+    #endif
+    assert(argv[2] != "");
 		cout << "\n***** start proceeing *****" << "\n";
 	Reconstruction re(fileName);
 	re.downSampling(paras.leafSize);
@@ -699,4 +705,29 @@ bool isIntersect(PointT p1, PointT q1, PointT p2, PointT q2)
 	if (o4 == 0 && onSegment(p2, q1, q2)) return true;
 
 	return false; // Doesn't fall in any of the above cases
+}
+
+void importConfig(const YAML::Node& node, reconstructParas &para){
+    YAML::Node RANSAC     = node["RANSAC"];
+    YAML::Node Downsample = node["Downsampling"];
+    YAML::Node Clustering = node["Clustering"];
+    YAML::Node Combine    = node["Combine"];
+    para.pointPitch       = node["pointPitch"].as<int>();
+    para.minPlaneHeight   = node["minPlaneHeight"].as<float>();
+
+    para.RANSAC_DistThreshold        = RANSAC["RANSAC_DistThreshold"].as<float>();
+    para.RANSAC_MinInliers           = RANSAC["RANSAC_MinInliers"].as<float>();
+    para.RANSAC_PlaneVectorThreshold = RANSAC["RANSAC_PlaneVectorThreshold"].as<float>();
+
+    para.KSearch  = Downsample["KSearch"].as<int>();
+    para.leafSize = Downsample["leafSize"].as<float>();
+
+    para.MinSizeOfCluster    = Clustering["MinSizeOfCluster"].as<int>();
+    para.NumberOfNeighbours  = Clustering["NumberOfNeighbours"].as<int>();
+    para.SmoothnessThreshold = Clustering["SmoothnessThreshold"].as<int>();
+    para.CurvatureThreshold  = Clustering["CurvatureThreshold"].as<int>();
+
+    para.minimumEdgeDist      = Combine["minimumEdgeDist"].as<float>();
+    para.minPlanesDist        = Combine["minPlanesDist"].as<float>();
+    para.minAngle_normalDiff  = Combine["minAngle_normalDiff"].as<float>();
 }
