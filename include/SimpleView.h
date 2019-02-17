@@ -11,6 +11,8 @@ typedef pcl::PointCloud<PointT> PointCloudT;
 
 void simpleView(const string &title, const pcl::PointCloud<pcl::PointXYZRGBNormal>::Ptr &cloud);
 
+void simpleView(const string &title, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
+
 void simpleView(const string& title, vector<Plane> &planes);
 
 void simpleView(const string& title, Reconstruction &re);
