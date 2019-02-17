@@ -6,6 +6,7 @@
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/io/ply_io.h>
+#include <pcl/io/vtk_io.h>
 #include <pcl/search/search.h>
 #include <pcl/search/kdtree.h>
 #include <pcl/features/normal_3d.h>
@@ -29,6 +30,10 @@
 #include "Plane.h"
 #include "SimpleView.h"
 #include "Reconstruction.h"
+#include <pcl/surface/concave_hull.h>
+#include <pcl/surface/convex_hull.h>
+
+#include <pcl/console/print.h>
 using namespace std;
 typedef pcl::PointXYZRGB PointRGB;
 typedef pcl::PointXYZRGBNormal PointT;
@@ -76,6 +81,28 @@ PlaneColor commonPlaneColor = Color_White;
 PlaneColor outerPlaneColor = Color_Yellow;
 PlaneColor innerPlaneColor = Color_Blue;
 PlaneColor upDownPlaneColor = Color_Green;
+void
+compute (pcl::PointCloud<pcl::PointXYZ>::ConstPtr cloud_in,
+         bool convex_concave_hull,
+         float alpha,
+         pcl::PointCloud<pcl::PointXYZ>::Ptr &mesh_out)
+{
+    if (!convex_concave_hull)
+    {
+        pcl::console::print_info ("Computing the convex hull of a cloud with %lu points.\n", cloud_in->size ());
+        pcl::ConvexHull<pcl::PointXYZ> convex_hull;
+        convex_hull.setInputCloud (cloud_in);
+        convex_hull.reconstruct (*mesh_out);
+    }
+    else
+    {
+        pcl::console::print_info ("Computing the concave hull (alpha shapes) with alpha %f of a cloud with %lu points.\n", alpha, cloud_in->size ());
+        pcl::ConcaveHull<pcl::PointXYZ> concave_hull;
+        concave_hull.setInputCloud (cloud_in);
+        concave_hull.setAlpha (alpha);
+        concave_hull.reconstruct (*mesh_out);
+    }
+}
 
 int main(int argc, char** argv) {
 	PCL_WARN("This program is based on assumption that ceiling and ground on the X-Y  \n");
@@ -183,6 +210,20 @@ int main(int argc, char** argv) {
                        paras.CurvatureThreshold, paras.MinSizeOfCluster, paras.KSearch);
     topTmp_re.getClusterPts(topTemp);
 
+    pcl::PointCloud<pcl::PointXYZ>::Ptr inputTopPts(new pcl::PointCloud<pcl::PointXYZ>);
+    for(auto& p:topTemp->points) {
+        pcl::PointXYZ tmp;
+        tmp.x = p.x;
+        tmp.y = p.y;
+        tmp.z = p.z;
+        inputTopPts->push_back(tmp);
+    }
+    pcl::PointCloud<pcl::PointXYZ>::Ptr mesh_out(new pcl::PointCloud<pcl::PointXYZ>);
+    compute(inputTopPts, true, 1, mesh_out);
+    cout << "before " << inputTopPts->size() << " : after " << mesh_out->size() << "\n";
+    simpleView("topTemp ", topTemp);
+    simpleView("compute hull ", mesh_out);
+    return 0;
     PointT min, max;
     pcl::getMinMax3D(*topTemp,min,max);
     simpleView("topTemp ", topTemp);

@@ -34,6 +34,19 @@ void simpleView(const string &title, const pcl::PointCloud<pcl::PointXYZRGBNorma
 	}
 }
 
+void simpleView(const string &title, const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud) {
+	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer(title));
+	viewer->setBackgroundColor(0, 0, 0);
+	viewer->addPointCloud<pcl::PointXYZ>(cloud, "1", 0);
+	viewer->addCoordinateSystem(1.0);
+	viewer->initCameraParameters();
+	while (!viewer->wasStopped())
+	{
+		viewer->spinOnce(100);
+		boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+	}
+}
+
 void simpleView(const string& title, vector<Plane> &planes) {
 
 	boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer(new pcl::visualization::PCLVisualizer(title));
