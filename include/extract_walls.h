@@ -25,6 +25,41 @@
 #include "Plane.h"
 using namespace std;
 
+struct reconstructParas
+{
+    // Downsampling
+    int KSearch = 10;
+    float leafSize = 0.05; // unit is meter -> 5cm
+
+    // Clustering
+    int MinSizeOfCluster = 800;
+    int NumberOfNeighbours = 30;
+    int SmoothnessThreshold = 5; // angle 360 degree
+    int CurvatureThreshold = 10;
+    // RANSAC
+    double RANSAC_DistThreshold = 0.25; //0.25;
+    float RANSAC_MinInliers = 0.5; // 500 todo: should be changed to percents
+    float RANSAC_PlaneVectorThreshold = 0.2;
+
+    // Fill the plane
+    int pointPitch = 20; // number of point in 1 meter
+
+    // Combine planes
+    int minimumEdgeDist = 1; //we control the distance between two edges and the height difference between two edges
+    float minHeightDiff = 0.5;
+    int minAngle_normalDiff = 5;// when extend smaller plane to bigger plane, we will calculate the angle between normals of planes
+
+    int roof_NumberOfNeighbours = 1;
+    int roof_SmoothnessThreshold = 2;
+    int roof_CurvatureThreshold = 1;
+    int roof_MinSizeOfCluster = 1;
+};
+
+struct EdgeLine{
+    Eigen::VectorXf paras;
+    PointT p;
+    PointT q;
+};
 typedef pcl::PointXYZRGBNormal PointT;
 typedef pcl::PointCloud<PointT> PointCloudT;
 
@@ -35,4 +70,14 @@ void extendSmallPlaneToBigPlane(Plane& sourceP, Plane& targetP, int color, int p
 bool onSegment(PointT p, PointT q, PointT r);
 float orientation(PointT p, PointT q, PointT r);
 bool isIntersect(PointT p1, PointT q1, PointT p2, PointT q2);
+
+void extractTopPts(PointCloudT::Ptr input, PointCloudT::Ptr output, float highest, float dimension, reconstructParas paras);
+void extractEdges(PointCloudT::Ptr input, PointCloudT::Ptr output, float alpha);
+void extractLineFromEdge(PointCloudT::Ptr input, vector<EdgeLine>& edgeLines);
+void seperatePtsToGroups(PointCloudT::Ptr input, float radius, vector<PointCloudT::Ptr>& output);
+void ptsToLine(PointCloudT::Ptr input, Eigen::VectorXf& paras, EdgeLine& output);
+
+void calculateNormals(PointCloudT::Ptr input, pcl::PointCloud <pcl::Normal>::Ptr &normals_all, int KSearch);
+void regionGrow(PointCloudT::Ptr input, int NumberOfNeighbours, int SmoothnessThreshold, int CurvatureThreshold,
+                int MinSizeOfCluster, int KSearch, vector<PointCloudT::Ptr>& outputClusters);
 #endif //TEST_PCL_EXTRACTWALL_H

@@ -46,35 +46,35 @@ int32_t randomColor() {
 	g = g << 8;
 	return r | g | b;
 }
-struct reconstructParas
-{
-	// Downsampling
-	int KSearch = 10;
-	float leafSize = 0.05; // unit is meter -> 5cm
-
-	// Clustering
-	int MinSizeOfCluster = 800;
-	int NumberOfNeighbours = 30;
-	int SmoothnessThreshold = 5; // angle 360 degree
-	int CurvatureThreshold = 10;
-	// RANSAC
-	double RANSAC_DistThreshold = 0.25; //0.25; 
-	float RANSAC_MinInliers = 0.5; // 500 todo: should be changed to percents
-	float RANSAC_PlaneVectorThreshold = 0.2;
-
-	// Fill the plane
-	int pointPitch = 20; // number of point in 1 meter
-
-	// Combine planes
-	int minimumEdgeDist = 1; //we control the distance between two edges and the height difference between two edges
-	float minHeightDiff = 0.5;
-	int minAngle_normalDiff = 5;// when extend smaller plane to bigger plane, we will calculate the angle between normals of planes
-
-	int roof_NumberOfNeighbours = 1;
-	int roof_SmoothnessThreshold = 2;
-	int roof_CurvatureThreshold = 1;
-	int roof_MinSizeOfCluster = 1;
-}paras;
+//struct reconstructParas
+//{
+//	// Downsampling
+//	int KSearch = 10;
+//	float leafSize = 0.05; // unit is meter -> 5cm
+//
+//	// Clustering
+//	int MinSizeOfCluster = 800;
+//	int NumberOfNeighbours = 30;
+//	int SmoothnessThreshold = 5; // angle 360 degree
+//	int CurvatureThreshold = 10;
+//	// RANSAC
+//	double RANSAC_DistThreshold = 0.25; //0.25;
+//	float RANSAC_MinInliers = 0.5; // 500 todo: should be changed to percents
+//	float RANSAC_PlaneVectorThreshold = 0.2;
+//
+//	// Fill the plane
+//	int pointPitch = 20; // number of point in 1 meter
+//
+//	// Combine planes
+//	int minimumEdgeDist = 1; //we control the distance between two edges and the height difference between two edges
+//	float minHeightDiff = 0.5;
+//	int minAngle_normalDiff = 5;// when extend smaller plane to bigger plane, we will calculate the angle between normals of planes
+//
+//	int roof_NumberOfNeighbours = 1;
+//	int roof_SmoothnessThreshold = 2;
+//	int roof_CurvatureThreshold = 1;
+//	int roof_MinSizeOfCluster = 1;
+//}paras;
 
 // color
 PlaneColor commonPlaneColor = Color_White;
@@ -112,6 +112,7 @@ int main(int argc, char** argv) {
 	vector<Plane> horizontalPlanes;
 	vector<Plane> upDownPlanes;
 	vector<Plane> wallEdgePlanes;
+	reconstructParas paras;
 	#ifdef _WIN32
 		//string fileName = argv[2];
 		string fileName = "TestData/Room_A.ply";
@@ -198,31 +199,22 @@ int main(int argc, char** argv) {
 		ZLimits[1] = -upDownPlanes[0].abcd()[3];
 	}
 
-    float step = 1 / (float)paras.pointPitch;
-    PointCloudT::Ptr topTemp(new PointCloudT);
-    pcl::PassThrough<PointT> filterZ;
-    filterZ.setInputCloud(re.pointCloud);
-    filterZ.setFilterFieldName("z");
-    filterZ.setFilterLimits(ZLimits[1] - 2 * step, ZLimits[1]);
-    filterZ.filter(*topTemp);
-    Reconstruction topTmp_re(topTemp);
-	topTmp_re.applyRegionGrow(paras.NumberOfNeighbours, paras.SmoothnessThreshold,
-                       paras.CurvatureThreshold, paras.MinSizeOfCluster, paras.KSearch);
-    topTmp_re.getClusterPts(topTemp);
+						float step = 1 / (float)paras.pointPitch;
+						PointCloudT::Ptr topTemp(new PointCloudT);
+    extractTopPts(re.pointCloud,topTemp,ZLimits[1],1 / (float)paras.pointPitch, paras);
 
-    pcl::PointCloud<pcl::PointXYZ>::Ptr inputTopPts(new pcl::PointCloud<pcl::PointXYZ>);
-    for(auto& p:topTemp->points) {
-        pcl::PointXYZ tmp;
-        tmp.x = p.x;
-        tmp.y = p.y;
-        tmp.z = p.z;
-        inputTopPts->push_back(tmp);
-    }
-    pcl::PointCloud<pcl::PointXYZ>::Ptr mesh_out(new pcl::PointCloud<pcl::PointXYZ>);
-    compute(inputTopPts, true, 1, mesh_out);
-    cout << "before " << inputTopPts->size() << " : after " << mesh_out->size() << "\n";
+
+	PointCloudT::Ptr hullOutput(new PointCloudT);
+    extractEdges(topTemp, hullOutput, 1);
+
+    cout << "Extract Hull: before " << topTemp->size() << " -> after " << hullOutput->size() << "\n";
     simpleView("topTemp ", topTemp);
-    simpleView("compute hull ", mesh_out);
+    simpleView("compute hull ", hullOutput);
+
+    // extract lines from edge point clouds
+    vector<EdgeLine> edgeLines;
+    extractLineFromEdge(hullOutput, edgeLines);
+
     return 0;
     PointT min, max;
     pcl::getMinMax3D(*topTemp,min,max);
@@ -543,6 +535,7 @@ void generateLinePointCloud(PointT pt1, PointT pt2, int pointPitch, int color, P
 	float ratioY = (pt1.y - pt2.y) / numPoints;
 	float ratioZ = (pt1.z - pt2.z) / numPoints;
 	for (size_t i = 0; i < numPoints; i++) {
+
 		PointT p;
 		p.x = pt2.x + i * (ratioX);
 		p.y = pt2.y + i * (ratioY);
@@ -649,4 +642,238 @@ bool isIntersect(PointT p1, PointT q1, PointT p2, PointT q2)
 	if (o4 == 0 && onSegment(p2, q1, q2)) return true;
 
 	return false; // Doesn't fall in any of the above cases
+}
+
+void extractTopPts(PointCloudT::Ptr input, PointCloudT::Ptr output, float highest, float dimension, reconstructParas paras){
+	//PointCloudT::Ptr topTemp(new PointCloudT);
+
+	pcl::PassThrough<PointT> filterZ;
+	filterZ.setInputCloud(input);
+	filterZ.setFilterFieldName("z");
+
+	filterZ.setFilterLimits(highest - 2 * dimension, highest);
+	filterZ.filter(*output);
+
+	Reconstruction topTmp_re(output);
+	topTmp_re.applyRegionGrow(paras.NumberOfNeighbours, paras.SmoothnessThreshold,
+							  paras.CurvatureThreshold, paras.MinSizeOfCluster, paras.KSearch);
+	topTmp_re.getClusterPts(output);
+}
+
+void extractEdges(PointCloudT::Ptr input, PointCloudT::Ptr output, float alpha){
+	pcl::ConcaveHull<pcl::PointXYZ> concave_hull;
+	pcl::PointCloud<pcl::PointXYZ>::Ptr tmpInput(new pcl::PointCloud<pcl::PointXYZ>);
+	pcl::PointCloud<pcl::PointXYZ>::Ptr tmpOutput(new pcl::PointCloud<pcl::PointXYZ>);
+
+	for (auto& p: input->points) {
+		pcl::PointXYZ q;
+		q.x = p.x;
+		q.y = p.y;
+		q.z = p.z;
+		tmpInput->push_back(q);
+	}
+	concave_hull.setInputCloud (tmpInput);
+	concave_hull.setAlpha (alpha);
+	concave_hull.reconstruct (*tmpOutput);
+	for (auto& p: tmpOutput->points) {
+		pcl::PointXYZRGBNormal q;
+		q.x = p.x;
+		q.y = p.y;
+		q.z = p.z;
+		q.rgba = INT32_MAX;
+		output->push_back(q);
+	}
+}
+
+void extractLineFromEdge(PointCloudT::Ptr input, vector<EdgeLine>& edgeLines){
+//	vector<PointCloudT::Ptr> clusters;
+//	regionGrow(input,30,10,5,5,20, clusters);
+
+//	cout << "extract " << clusters.size() << " lines\n";
+	vector<PointCloudT::Ptr> roofEdgeClusters;
+	vector<Eigen::VectorXf> roofEdgeClustersCoffs;
+	assert(input->size() > 0);
+	int iter = 0;
+	while (iter++ < 1000 && input->size() > 1) {
+		pcl::ModelCoefficients::Ptr sacCoefficients(new pcl::ModelCoefficients);
+		pcl::PointIndices::Ptr sacInliers(new pcl::PointIndices);
+		pcl::SACSegmentation<PointT> seg;
+		seg.setOptimizeCoefficients(true);
+		seg.setModelType(pcl::SACMODEL_LINE);
+		seg.setMethodType(pcl::SAC_RANSAC);
+		seg.setDistanceThreshold(0.05);
+		seg.setInputCloud(input);
+		seg.segment(*sacInliers, *sacCoefficients);
+		Eigen::VectorXf coff(6);
+		coff << sacCoefficients->values[0], sacCoefficients->values[1], sacCoefficients->values[2],
+				sacCoefficients->values[3], sacCoefficients->values[4], sacCoefficients->values[5];
+
+		PointCloudT::Ptr extracted_cloud(new PointCloudT);
+		pcl::ExtractIndices<PointT> extract;
+		extract.setInputCloud(input);
+		extract.setIndices(sacInliers);
+		extract.setNegative(false);
+		extract.filter(*extracted_cloud);
+
+		vector<PointCloudT::Ptr> tmpClusters;
+		seperatePtsToGroups(extracted_cloud, 0.5, tmpClusters);
+		for (auto &c:tmpClusters) {
+			roofEdgeClusters.push_back(c);
+			roofEdgeClustersCoffs.push_back(coff);
+		}
+		extract.setNegative(true);
+		extract.filter(*input);
+	}
+
+	int sum = 0;
+	for (auto &c:roofEdgeClusters) sum += c->size();
+	vector<Eigen::Vector3i> colors;
+	for (int k = 0; k <= roofEdgeClusters.size()/6; ++k) {
+		colors.push_back(Eigen::Vector3i(255,0,0)); // red
+		colors.push_back(Eigen::Vector3i(255,255,0)); // yellow
+		colors.push_back(Eigen::Vector3i(0,0,255)); // blue
+		colors.push_back(Eigen::Vector3i(0,255,0)); // green
+		colors.push_back(Eigen::Vector3i(0,255,255)); // cyan
+		colors.push_back(Eigen::Vector3i(255,0,255)); // pink
+	}
+
+	PointCloudT::Ptr coloredClusterPts(new PointCloudT);
+	for (int l = 0; l < roofEdgeClusters.size(); ++l) {
+		int color = 255 <<24 | colors[l][0] << 16 | colors[l][1] << 8 | colors[l][2];
+		for (auto &p:roofEdgeClusters[l]->points) {
+			p.rgba = color;
+			coloredClusterPts->push_back(p);
+		}
+	}
+
+	assert(roofEdgeClusters.size() > 0);
+	simpleView("coloredPts",coloredClusterPts);
+
+	for (int i = 0; i < roofEdgeClusters.size(); ++i) {
+		EdgeLine line;
+		ptsToLine(roofEdgeClusters[i], roofEdgeClustersCoffs[i], line);
+		edgeLines.push_back(line);
+	}
+	cout << "extract " << edgeLines.size() << " lines"<< endl;
+	PointCloudT::Ptr linePts(new PointCloudT);
+	for (int i = 0; i < edgeLines.size(); ++i) {
+		int color = 255 <<24 | colors[i][0] << 16 | colors[i][1] << 8 | colors[i][2];
+		generateLinePointCloud(edgeLines[i].p, edgeLines[i].q, 20,color, linePts);
+	}
+	simpleView("line pts" , linePts);
+}
+
+void seperatePtsToGroups(PointCloudT::Ptr input, float radius, vector<PointCloudT::Ptr>& output){
+	assert(input->size() > 0);
+	while(input->size() > 0) {
+        pcl::KdTreeFLANN<PointT> kdtree;
+        PointCloudT::Ptr group(new PointCloudT);
+        stack<PointT> seeds;
+        seeds.push(input->points[0]);
+		group->push_back(input->points[0]);
+        input->points.erase(input->points.begin());
+        vector<int> pointIdx;
+        vector<float> dist;
+        while(!seeds.empty() && input->size() > 0) {
+			kdtree.setInputCloud(input);
+            PointT seed = seeds.top();
+            seeds.pop();
+            kdtree.radiusSearch(seed, radius, pointIdx,dist);
+			for(auto& ix : pointIdx) {
+                seeds.push(input->points[ix]);
+                group->push_back(input->points[ix]);
+            }
+            for(auto& ix : pointIdx) input->points.erase(input->points.begin() + ix);
+        }
+        output.push_back(group);
+	}
+}
+
+void ptsToLine(PointCloudT::Ptr input, Eigen::VectorXf& paras, EdgeLine& output) {
+	// for simplicity, only consider two dimension
+	// need to improve
+
+	PCL_WARN("@ptsToLine need to be improved, it is shorter than the real length ");
+	float k = paras[4] / paras[3];
+	float b = paras[1] - k * paras[0];
+
+	PointT min,max;
+	pcl::getMinMax3D(*input, min, max);
+	PointT p,q;
+
+	p.x = min.x;
+	p.y = k * p.x + b;
+	q.x = max.x;
+	q.y = k * q.x + b;
+	p.z = 1;
+	q.z = 1;
+	Eigen::VectorXf coff(6);
+	output.paras = coff;
+	output.p = p;
+	output.q = q;
+}
+
+
+void regionGrow(PointCloudT::Ptr input, int NumberOfNeighbours, int SmoothnessThreshold, int CurvatureThreshold,
+		int MinSizeOfCluster, int KSearch, vector<PointCloudT::Ptr>& outputClusters) {
+	std::vector<pcl::PointIndices> clustersIndices;
+	pcl::search::Search<PointT>::Ptr tree = boost::shared_ptr<pcl::search::Search<PointT> >(
+			new pcl::search::KdTree<PointT>);
+	pcl::PointCloud<pcl::Normal>::Ptr normals_all(new pcl::PointCloud<pcl::Normal>);
+	calculateNormals(input, normals_all, KSearch);
+	pcl::RegionGrowing<PointT, pcl::Normal> reg;
+	reg.setMinClusterSize(0);
+	reg.setMaxClusterSize(100000);
+	reg.setSearchMethod(tree);
+	reg.setNumberOfNeighbours(NumberOfNeighbours);
+	reg.setInputCloud(input);
+	reg.setInputNormals(normals_all);
+	reg.setSmoothnessThreshold(static_cast<float>(SmoothnessThreshold / 180.0 * M_PI));
+	reg.setCurvatureThreshold(CurvatureThreshold);
+	reg.extract(clustersIndices);
+	pcl::PointCloud<pcl::PointXYZRGB>::Ptr colored_cloud = reg.getColoredCloud();
+	for (size_t i = 0; i < clustersIndices.size(); ++i) {
+		if (clustersIndices[i].indices.size() < MinSizeOfCluster) continue;
+		PointCloudT::Ptr singleCluster(new PointCloudT);
+		for (auto &p : clustersIndices[i].indices) {
+			singleCluster->points.push_back(input->points[p]);
+		}
+		outputClusters.push_back(singleCluster);
+	}
+}
+
+void calculateNormals(PointCloudT::Ptr input, pcl::PointCloud <pcl::Normal>::Ptr &normals_all, int KSearch)
+{
+
+	//1-1. generating the normal for each point
+	if (input->points[0].normal_x == 0 &&
+			input->points[0].normal_y == 0 &&
+			input->points[0].normal_z == 0) {
+		stringstream ss;
+		ss << "The point you input doesn't contain normals, calculating normals...";
+		pcl::search::Search<PointT>::Ptr tree = boost::shared_ptr<pcl::search::Search<PointT> >(new pcl::search::KdTree<PointT>);
+		pcl::NormalEstimation<PointT, pcl::Normal> normal_estimator;
+		normal_estimator.setSearchMethod(tree);
+		normal_estimator.setInputCloud(input);
+		normal_estimator.setKSearch(KSearch);
+		normal_estimator.compute(*normals_all);
+
+		for (size_t i = 0; i < normals_all->points.size(); ++i)
+		{
+			input->points[i].normal_x = normals_all->points[i].normal_x;
+			input->points[i].normal_y = normals_all->points[i].normal_y;
+			input->points[i].normal_z = normals_all->points[i].normal_z;
+		}
+	}
+	else
+	{
+		for (size_t i = 0; i < input->points.size(); ++i)
+		{
+			pcl::Normal normal_temp;
+			normal_temp.normal_x = input->points[i].normal_x;
+			normal_temp.normal_y = input->points[i].normal_y;
+			normal_temp.normal_z = input->points[i].normal_z;
+			normals_all->push_back(normal_temp);
+		}
+	}
 }
