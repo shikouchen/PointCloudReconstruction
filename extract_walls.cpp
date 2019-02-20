@@ -2,6 +2,7 @@
 // Created by czh on 10/17/18.
 //
 #include <iostream>
+#include <unordered_map>
 #include <vector>
 #include <pcl/point_types.h>
 #include <pcl/io/pcd_io.h>
@@ -211,9 +212,36 @@ int main(int argc, char** argv) {
     simpleView("topTemp ", topTemp);
     simpleView("compute hull ", hullOutput);
 
+	vector<Eigen::Vector3i> colors;
+	for (int k = 0; k <= 10; ++k) {
+		colors.push_back(Eigen::Vector3i(255,0,0)); // red
+		colors.push_back(Eigen::Vector3i(255,255,0)); // yellow
+		colors.push_back(Eigen::Vector3i(0,0,255)); // blue
+		colors.push_back(Eigen::Vector3i(0,255,0)); // green
+		colors.push_back(Eigen::Vector3i(0,255,255)); // cyan
+		colors.push_back(Eigen::Vector3i(255,0,255)); // pink
+	}
     // extract lines from edge point clouds
     vector<EdgeLine> edgeLines;
     extractLineFromEdge(hullOutput, edgeLines);
+    cout << "extract " << edgeLines.size() << " lines\n";
+
+	PointCloudT::Ptr linePts(new PointCloudT);
+	for (int i = 0; i < edgeLines.size(); ++i) {
+		int color = 255 <<24 | colors[i][0] << 16 | colors[i][1] << 8 | colors[i][2];
+		generateLinePointCloud(edgeLines[i].p, edgeLines[i].q, 20,color, linePts);
+	}
+	simpleView("line pts" , linePts);
+
+	findLinkedLines(edgeLines);
+	cout << "after find linked lines, extract " << edgeLines.size() << " lines\n";
+	linePts->erase(linePts->begin(),linePts->end());
+	for (int i = 0; i < edgeLines.size(); ++i) {
+		int color = 255 <<24 | colors[i][0] << 16 | colors[i][1] << 8 | colors[i][2];
+		generateLinePointCloud(edgeLines[i].p, edgeLines[i].q, 20,color, linePts);
+	}
+	simpleView("line pts after findLinkedLines" , linePts);
+
 
     return 0;
     PointT min, max;
@@ -303,15 +331,15 @@ int main(int argc, char** argv) {
 
 //
 
-	vector<Eigen::Vector3i> colors;
-	for (int k = 0; k < roofEdgeClusters.size(); ++k) {
-		colors.push_back(Eigen::Vector3i(255,0,0)); // red
-		colors.push_back(Eigen::Vector3i(255,255,0)); // yellow
-		colors.push_back(Eigen::Vector3i(0,0,255)); // blue
-		colors.push_back(Eigen::Vector3i(0,255,0)); // green
-		colors.push_back(Eigen::Vector3i(0,255,255)); // cyan
-		colors.push_back(Eigen::Vector3i(255,0,255)); // pink
-	}
+//	vector<Eigen::Vector3i> colors;
+//	for (int k = 0; k < roofEdgeClusters.size(); ++k) {
+//		colors.push_back(Eigen::Vector3i(255,0,0)); // red
+//		colors.push_back(Eigen::Vector3i(255,255,0)); // yellow
+//		colors.push_back(Eigen::Vector3i(0,0,255)); // blue
+//		colors.push_back(Eigen::Vector3i(0,255,0)); // green
+//		colors.push_back(Eigen::Vector3i(0,255,255)); // cyan
+//		colors.push_back(Eigen::Vector3i(255,0,255)); // pink
+//	}
 	PointCloudT::Ptr roofClusterPts(new PointCloudT);
 	for (int l = 0; l < roofEdgeClusters.size(); ++l) {
 		int color = 255 <<24 | colors[l][0] << 16 | colors[l][1] << 8 | colors[l][2];
@@ -752,15 +780,10 @@ void extractLineFromEdge(PointCloudT::Ptr input, vector<EdgeLine>& edgeLines){
 	for (int i = 0; i < roofEdgeClusters.size(); ++i) {
 		EdgeLine line;
 		ptsToLine(roofEdgeClusters[i], roofEdgeClustersCoffs[i], line);
-		edgeLines.push_back(line);
+		if (pcl::geometry::distance(line.p,line.q) > 0.1) edgeLines.push_back(line);
 	}
 	cout << "extract " << edgeLines.size() << " lines"<< endl;
-	PointCloudT::Ptr linePts(new PointCloudT);
-	for (int i = 0; i < edgeLines.size(); ++i) {
-		int color = 255 <<24 | colors[i][0] << 16 | colors[i][1] << 8 | colors[i][2];
-		generateLinePointCloud(edgeLines[i].p, edgeLines[i].q, 20,color, linePts);
-	}
-	simpleView("line pts" , linePts);
+
 }
 
 void seperatePtsToGroups(PointCloudT::Ptr input, float radius, vector<PointCloudT::Ptr>& output){
@@ -813,6 +836,38 @@ void ptsToLine(PointCloudT::Ptr input, Eigen::VectorXf& paras, EdgeLine& output)
 	output.q = q;
 }
 
+void findLinkedLines(vector<EdgeLine>& edgeLines) {
+	vector<PointT> allPts;
+	for(auto& l: edgeLines) {
+		allPts.push_back(l.p);
+		allPts.push_back(l.q);
+	}
+	int n = allPts.size();
+	std::unordered_map<int,int> map;
+
+	for (int i = 0; i < n; i++) {
+		float minDist = 100;
+		int index = -1;
+		for (int j = 0; j < n; j++) {
+			if (i==j) continue;
+			if (i%2 == 0 && j == i+1) continue;
+			if (i%2 != 0 && j == i-1) continue;
+
+			if (pcl::geometry::distance( allPts[i], allPts[j] ) < minDist) {
+				minDist = pcl::geometry::distance( allPts[i], allPts[j] );
+				index = j;
+			}
+		}
+
+		assert(index >= 0);
+		if (map.count(index) && map[index] == i) continue;
+		EdgeLine line;
+		line.p = allPts[i];
+		line.q = allPts[index];
+		edgeLines.push_back(line);
+		map[i] = index;
+	}
+}
 
 void regionGrow(PointCloudT::Ptr input, int NumberOfNeighbours, int SmoothnessThreshold, int CurvatureThreshold,
 		int MinSizeOfCluster, int KSearch, vector<PointCloudT::Ptr>& outputClusters) {

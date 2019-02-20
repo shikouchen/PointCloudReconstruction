@@ -76,6 +76,8 @@ void extractEdges(PointCloudT::Ptr input, PointCloudT::Ptr output, float alpha);
 void extractLineFromEdge(PointCloudT::Ptr input, vector<EdgeLine>& edgeLines);
 void seperatePtsToGroups(PointCloudT::Ptr input, float radius, vector<PointCloudT::Ptr>& output);
 void ptsToLine(PointCloudT::Ptr input, Eigen::VectorXf& paras, EdgeLine& output);
+void findLinkedLines(vector<EdgeLine>& edgeLines);
+
 
 void calculateNormals(PointCloudT::Ptr input, pcl::PointCloud <pcl::Normal>::Ptr &normals_all, int KSearch);
 void regionGrow(PointCloudT::Ptr input, int NumberOfNeighbours, int SmoothnessThreshold, int CurvatureThreshold,
