@@ -70,14 +70,22 @@ void extendSmallPlaneToBigPlane(Plane& sourceP, Plane& targetP, int color, int p
 bool onSegment(PointT p, PointT q, PointT r);
 float orientation(PointT p, PointT q, PointT r);
 bool isIntersect(PointT p1, PointT q1, PointT p2, PointT q2);
+void smoothNoise(PointCloudT::Ptr input, int K, float beta);
+void densityFilter(PointCloudT::Ptr input);
+
+void detectHeightRange(PointCloudT::Ptr input, float& high, float& low);
 
 void extractTopPts(PointCloudT::Ptr input, PointCloudT::Ptr output, float highest, float dimension, reconstructParas paras);
+void convert2D(PointCloudT::Ptr input,PointCloudT::Ptr output);
+void findBiggestComponent2D(PointCloudT::Ptr input, PointCloudT::Ptr output);
+
 void extractEdges(PointCloudT::Ptr input, PointCloudT::Ptr output, float alpha);
 void extractLineFromEdge(PointCloudT::Ptr input, vector<EdgeLine>& edgeLines);
 void seperatePtsToGroups(PointCloudT::Ptr input, float radius, vector<PointCloudT::Ptr>& output);
 void ptsToLine(PointCloudT::Ptr input, Eigen::VectorXf& paras, EdgeLine& output);
 void findLinkedLines(vector<EdgeLine>& edgeLines);
 
+void calculateMeanStandardDev(vector<float> v, float& mean, float& stdev);
 
 void calculateNormals(PointCloudT::Ptr input, pcl::PointCloud <pcl::Normal>::Ptr &normals_all, int KSearch);
 void regionGrow(PointCloudT::Ptr input, int NumberOfNeighbours, int SmoothnessThreshold, int CurvatureThreshold,
